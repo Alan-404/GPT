@@ -23,8 +23,6 @@ class GPTTrainer:
                  dropout_rate: float = 0.1,
                  eps: float = 0.02,
                  device: str = 'cpu',
-                 optim_betas: tuple[float, float] = [0.9, 0.999],
-                 optim_eps: float = 1e-8,
                  learning_rate: float = 3e-5,
                  checkpoint: str = None) -> None:
         # Setup Model
