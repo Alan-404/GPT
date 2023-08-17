@@ -4,12 +4,12 @@ import torch
 import os
 
 
-def build_model(checkpoint: str, tokenizer_path: str, build_path: str):
+def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: str):
     if os.path.exists(checkpoint) == False or os.path.exists(tokenizer_path) == False:
         return
-    device = 'cpu'
-    if torch.cuda.is_available():
-        device = 'cuda:0'
+    if device != 'cpu' and torch.cuda.is_available() == False:
+        device = 'cpu'
+    
     tokenizer = Tokenizer(tokenizer_path)
 
     trainer = GPTTrainer(
@@ -31,11 +31,13 @@ if __name__ == '__main__':
     parser.add_argument("--checkpoint", type=str)
     parser.add_argument("--tokenizer_path", type=str)
     parser.add_argument("--build_path", type=str)
+    parser.add_argument("--device", type=str, default='cpu')
 
     args = parser.parse_args()
 
     build_model(
         checkpoint=args.checkpoint,
         tokenizer_path=args.tokenizer_path,
-        build_path=args.build_path
+        build_path=args.build_path,
+        device=args.device
     )
