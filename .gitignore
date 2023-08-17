@@ -1,0 +1,11 @@
+/tokenizer
+__pycache__
+/saved_models
+/built_models
+/datasets
+/clean
+/request.http
+/test.py
+/assets/gpt_model
+/.dvc
+/.dvcignore
