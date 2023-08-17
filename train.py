@@ -20,7 +20,12 @@ def train_model(data_path: str,
                 learning_rate: float,
                 val_type: str,
                 num_folds: int,
-                val_size: float):
+                val_size: float,
+                tracking: bool,
+                tracking_uri: str,
+                experiment_name: str,
+                run_id: str,
+                run_name: str):
     
     tokenizer = Tokenizer(tokenizer_path)
     
@@ -43,7 +48,18 @@ def train_model(data_path: str,
 
     data = torch.tensor(data)
 
-    trainer.fit(data, epochs=epochs, batch_size=batch_size, mini_batch=mini_batch, val_type=val_type, num_folds=num_folds, val_size=val_size)
+    trainer.fit(data, 
+                epochs=epochs, 
+                batch_size=batch_size, 
+                mini_batch=mini_batch, 
+                val_type=val_type, 
+                num_folds=num_folds, 
+                val_size=val_size,
+                tracking=tracking,
+                tracking_uri=tracking_uri,
+                experiment_name=experiment_name,
+                run_id=run_id,
+                run_name=run_name)
 
 
 if __name__ == '__main__':
@@ -77,12 +93,18 @@ if __name__ == '__main__':
     parser.add_argument("--num_folds", type=int, default=1)
     parser.add_argument("--val_size", type=float, default=0.2)
 
+    # Tracking config
+    parser.add_argument("--tracking", type=bool, default=False)
+    parser.add_argument("--tracking_uri", type=str, default=None)
+    parser.add_argument("--experiment_name", type=str, default=None)
+    parser.add_argument("--run_id", type=str, default=None)
+    parser.add_argument("--run_name", type=str, default=None)
+
 
     args = parser.parse_args()
 
 
-    if args.data_path is None or args.tokenizer_path is None:
-        raise Exception("Data Path and Tokenizer path is NOT NONE")
+    assert args.data_path is not None or args.tokenizer_path is not None
 
     if activation_functions_dict[args.activation] is None:
         args.activation = activation_functions_dict['gelu']
@@ -110,5 +132,10 @@ if __name__ == '__main__':
         learning_rate=args.learning_rate,
         val_type=args.val_type,
         num_folds=args.num_folds,
-        val_size=args.val_size
+        val_size=args.val_size,
+        tracking=args.tracking,
+        tracking_uri=args.tracking_uri,
+        experiment_name=args.experiment_name,
+        run_id=args.run_id,
+        run_name=args.run_name
     )    

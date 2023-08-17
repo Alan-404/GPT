@@ -123,7 +123,7 @@ class GPTTrainer:
 
         return loss.item(), score
 
-    def train(self, dataloader: DataLoader, epochs: int, mini_batch: int, val_dataloader: DataLoader = None):
+    def train(self, dataloader: DataLoader, epochs: int, mini_batch: int, val_dataloader: DataLoader = None, tracking: bool = False):
         # Beginning Config
         total_batches = len(dataloader)
         batch_loss = 0.0
@@ -159,17 +159,40 @@ class GPTTrainer:
             self.losses.append(epoch_loss/total_batches)
             self.scores.append(epoch_score/total_batches)
 
+            if tracking:
+                mlflow.log_metric("Train Loss", epoch_loss/total_batches, step=self.epoch)
+                mlflow.log_metric("Train BLEU Score", epoch_score/total_batches, step=self.epoch)
+
+            if val_dataloader is not None:
+                self.validate(val_dataloader)
+            
             epoch_loss = 0.0
             epoch_score = 0.0
             self.epoch += 1
 
-            if val_dataloader is not None:
-                self.validate(val_dataloader)
-
+            
             # Step Scheduler to change learning rate
             # self.scheduler.step()
 
     def fit(self, data: torch.Tensor, epochs: int = 1, batch_size: int = 1, mini_batch: int = 1, **validation):
+        tracking = False
+        if 'tracking' in validation and validation['tracking'] == True:
+            tracking = True
+            if 'tracking_uri' in validation and validation['tracking_uri'] is not None:
+                mlflow.set_tracking_uri(validation['tracking_uri'])
+            
+            if 'experiment_name' in validation and validation['experiment_name'] is not None:
+                mlflow.set_experiment(validation['experiment_name'])
+            else:
+                mlflow.set_experiment("GPT Model")
+            
+            if "run_id" in validation and validation['run_id'] is not None:
+                mlflow.start_run(validation['run_id'])
+            elif 'run_name' in validation and validation['run_name'] is not None:
+                mlflow.start_run(run_name=validation['run_name'])
+            else:
+                mlflow.start_run(run_name="Version 1")
+
         # Set model in Training mode
         self.model.train()
 
@@ -186,7 +209,7 @@ class GPTTrainer:
                 train_dataloader = self.build_dataset(train_set, batch_size=batch_size)
                 val_dataloader = self.build_dataset(val_set, batch_size=batch_size)
 
-                self.train(train_dataloader, epochs=epochs, mini_batch=mini_batch, val_dataloader=val_dataloader)
+                self.train(train_dataloader, epochs=epochs, mini_batch=mini_batch, val_dataloader=val_dataloader, tracking=tracking)
             elif validation['val_type'] == 'kfold':
                 num_folds = 1
                 if 'num_folds' in validation and type(validation['num_folds'] == 'int'):
@@ -206,17 +229,20 @@ class GPTTrainer:
 
                     train_dataloader = self.build_dataset(train_set, batch_size=batch_size)
                     val_dataloader = self.build_dataset(val_set, batch_size=batch_size)
-                    self.train(train_dataloader, epochs=epochs, mini_batch=mini_batch, val_dataloader=val_dataloader)
+                    self.train(train_dataloader, epochs=epochs, mini_batch=mini_batch, val_dataloader=val_dataloader, tracking=tracking)
         # No Validation
         else:
             dataloader = self.build_dataset(data, batch_size=batch_size)
-            self.train(dataloader, epochs=epochs, mini_batch=mini_batch)
+            self.train(dataloader, epochs=epochs, mini_batch=mini_batch, tracking=tracking)
 
         # Save Checkpoint
         if self.checkpoint is not None:
             self.save_model(self.checkpoint)
         else:
             self.save_model("./model.pt")
+
+        if tracking:
+            mlflow.pytorch.log_model(self.model, "model")
     
     
     def validate_step(self, inputs: torch.Tensor, labels: torch.Tensor):
@@ -229,7 +255,7 @@ class GPTTrainer:
 
         return loss, score
         
-    def validate(self, dataloader: DataLoader):
+    def validate(self, dataloader: DataLoader, tracking: bool = False):
         total_batches = len(dataloader)
         total_loss = 0.0
         total_score = 0.0
@@ -242,9 +268,13 @@ class GPTTrainer:
             total_score += score
         
         if self.model.training:
-            print(f"Epoch: {self.epoch} Validation Loss: {(total_loss/total_batches):.4f} Validation Score: {(total_score/total_batches):.4f}")
+            print(f"Epoch: {self.epoch+1} Validation Loss: {(total_loss/total_batches):.4f} Validation Score: {(total_score/total_batches):.4f}")
             self.val_losses.append(total_loss/total_batches)
             self.val_scores.append(total_score/total_batches)
+
+            if tracking:
+                mlflow.log_metric("Validation Loss", total_loss/total_batches, step=self.epoch)
+                mlflow.log_metric("Validation BLEU Score", total_score/total_batches, step=self.epoch)
         else:
             print(f"Evaluation Result: Loss: {(total_loss/total_batches):.4f} Score: {(total_score/total_batches):.4f}")
         
