@@ -21,6 +21,12 @@ class Tokenizer:
         else:
             self.special_tokens = init_tokens + special_tokens
     
+    def get_special_token(self, name: str):
+        name = f"<{name}>"
+        assert name in self.dictionary
+
+        return self.dictionary.index(name)
+    
     def save_tokenizer(self, path: str):
         obj = {
             "dictionary": self.dictionary,
