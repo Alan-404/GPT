@@ -43,4 +43,4 @@ if __name__ == '__main__':
         checkpoint=args.checkpoint,
         batch_size=args.batch_size,
         device=args.device
-    )   
+    )
