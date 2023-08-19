@@ -4,7 +4,9 @@ WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
 
-COPY preprocess /app/preprocess
+COPY preprocessing /app/preprocessing
+
+COPY tokenizer/tokenizer.pkl /app/tokenizer/tokenizer.pkl
 
 COPY /built_models/gpt.onnx /app/built_models/gpt.onnx
 
