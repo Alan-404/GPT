@@ -1,6 +1,6 @@
 import torch
 from trainer import GPTTrainer, activation_functions_dict
-from preprocess.data import Tokenizer
+from preprocessing.data import Tokenizer
 from typing import Callable
 import os
 

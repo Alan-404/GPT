@@ -1,7 +1,7 @@
 from gpt import GPT
 import torch
 from typing import Callable
-from preprocess.data import Tokenizer
+from preprocessing.data import Tokenizer
 import torchviz
 from trainer import activation_functions_dict
 
