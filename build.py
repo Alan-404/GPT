@@ -33,6 +33,7 @@ if __name__ == '__main__':
     parser.add_argument("--build_path", type=str)
     parser.add_argument("--device", type=str, default='cpu')
 
+
     args = parser.parse_args()
 
     build_model(

@@ -6,30 +6,33 @@ from argparse import ArgumentParser
 from pydantic import BaseModel
 import numpy as np
 import re
+import time
 
 parser = ArgumentParser()
 parser.add_argument('--host', default='127.0.0.1', help='Host IP to bind to')
 parser.add_argument('--port', type=int, default=8000, help='Port to listen on')
 parser.add_argument('--model', type=str)
 parser.add_argument('--tokenizer', type=str)
-parser.add_argument('--max_ctx', type=int, default=150)
+parser.add_argument('--max_ctx', type=int, default=201)
+parser.add_argument("--device", type=str, default='cpu')
 args = parser.parse_args()
 
 app = FastAPI()
 
-if ort.get_device() == 'GPU':
+if args.device.lower() != "cpu" and ort.get_device() == 'GPU':
     model = ort.InferenceSession(args.model, providers=['CUDAExecutionProvider'])
 else:
     model = ort.InferenceSession(args.model, providers=['CPUExecutionProvider'])
 
 tokenizer = Tokenizer(args.tokenizer)
-end_token = tokenizer.dictionary.index("<end>")
+end_token = tokenizer.get_special_token("end")
 
 class ChatMessage(BaseModel):
     message: str
 
 @app.post("/chat")
 def hello(chat_message: ChatMessage):
+    start_time = time.time()
     digit = tokenizer.text_to_sequences([chat_message.message], start_token=True, sep_token=True)
 
     response_start_index = digit.shape[-1]
@@ -54,8 +57,8 @@ def hello(chat_message: ChatMessage):
     response = "".join(texts)
     response = re.sub("</w>", " ", response)
     response = response.strip()
-
-    return {'response': response}
+    end_time = time.time()
+    return {'response': response, "time_out": end_time-start_time}
 
 
 if __name__ == '__main__':
