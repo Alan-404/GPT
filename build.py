@@ -1,8 +1,7 @@
 from trainer import GPTTrainer
-from data import Tokenizer
+from preprocess.data import Tokenizer
 import torch
 import os
-
 
 def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: str):
     # Check Config Paths

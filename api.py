@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 import onnxruntime as ort
 import uvicorn
-from data import Tokenizer
+from preprocess.data import Tokenizer
 from argparse import ArgumentParser
 from pydantic import BaseModel
 import numpy as np

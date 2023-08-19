@@ -1,7 +1,7 @@
 import torch
 from typing import Callable
 from trainer import GPTTrainer, activation_functions_dict
-from data import Tokenizer, load_data
+from preprocess.data import Tokenizer, load_data
 
 def train_model(data_path: str,
                 tokenizer_path: str,
