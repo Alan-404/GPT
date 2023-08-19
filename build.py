@@ -3,7 +3,7 @@ from preprocess.data import Tokenizer
 import torch
 import os
 
-def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: str):
+def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: str, model_type: str):
     # Check Config Paths
     assert os.path.exists(checkpoint) == True and os.path.exists(tokenizer_path) == True
     
@@ -26,8 +26,13 @@ def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: s
     # Init input of Model
     dummpy_input = torch.randint(low=0, high=len(tokenizer.dictionary), size=(1, 20))
 
-    # Export model to ONNX
-    torch.onnx.export(trainer.model, dummpy_input.to(device), build_path, input_names=["input"], output_names=['output'], dynamic_axes={"input": {0: 'batch_size', 1: "n_ctx"}, "output": {0: "batch_size", 1: "n_ctx"}})
+    if model_type == 'onnx':
+        # Export model to ONNX
+        torch.onnx.export(trainer.model, dummpy_input.to(device), build_path, input_names=["input"], output_names=['output'], dynamic_axes={"input": {0: 'batch_size', 1: "n_ctx"}, "output": {0: "batch_size", 1: "n_ctx"}})
+    else:
+        # Export model to JIT
+        traced_model = torch.jit.trace(trainer.model, example_inputs=dummpy_input.to(device))
+        torch.jit.save(traced_model, build_path)
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
@@ -38,7 +43,7 @@ if __name__ == '__main__':
     parser.add_argument("--tokenizer_path", type=str)
     parser.add_argument("--build_path", type=str)
     parser.add_argument("--device", type=str, default='cpu')
-
+    parser.add_argument("--model_type", type=str, default='onnx')
 
     args = parser.parse_args()
 
@@ -46,5 +51,6 @@ if __name__ == '__main__':
         checkpoint=args.checkpoint,
         tokenizer_path=args.tokenizer_path,
         build_path=args.build_path,
-        device=args.device
+        device=args.device,
+        model_type=args.model_type
     )

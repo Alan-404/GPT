@@ -229,6 +229,17 @@ class Tokenizer:
         with open(path, 'wb') as file:
             pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
+    def decode(self, tokens: np.ndarray):
+        text = []
+        for token in tokens:
+            text.append(self.dictionary[token])
+
+        response = "".join(text)
+        response = re.sub("</w>", " ", response)
+        response = response.strip()
+
+        return response
+    
     def get_data(self, path: str) -> np.ndarray:
         with open(path, 'rb') as file:
             return pickle.load(file)

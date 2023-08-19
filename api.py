@@ -5,8 +5,8 @@ from preprocess.data import Tokenizer
 from argparse import ArgumentParser
 from pydantic import BaseModel
 import numpy as np
-import re
 import time
+import os
 
 # Get Information about Server
 parser = ArgumentParser()
@@ -16,16 +16,21 @@ parser.add_argument('--model', type=str)
 parser.add_argument('--tokenizer', type=str)
 parser.add_argument('--max_ctx', type=int, default=201)
 parser.add_argument("--device", type=str, default='cpu')
+
 args = parser.parse_args()
+
+assert os.path.exists(args.model) == True and os.path.exists(args.tokenizer)
 
 # Config App and APIs
 app = FastAPI()
 
+providers = ['CPUExecutionProvider']
+
 # Device Config and Load ONNX Model
-if args.device.lower() != "cpu" and ort.get_device() == 'GPU':
-    model = ort.InferenceSession(args.model, providers=['CUDAExecutionProvider'])
-else:
-    model = ort.InferenceSession(args.model, providers=['CPUExecutionProvider'])
+if args.device.strip().lower() in ['cuda', 'gpu'] and ort.get_device() == 'GPU':
+    providers = ['CUDAExecutionProvider'] + providers
+
+model = ort.InferenceSession(args.model, providers=providers)
 
 # Load Tokenizer
 tokenizer = Tokenizer(args.tokenizer)
@@ -46,7 +51,7 @@ def hello(chat_message: ChatMessage):
     request_token_length = digit.shape[1]
     response_start_index = digit.shape[-1]
 
-    # Generate Token Stage
+    # Generate Tokens Stage
     for _ in range(args.max_ctx):
         output = model.run(
             None,
@@ -59,16 +64,13 @@ def hello(chat_message: ChatMessage):
 
         digit = np.concatenate((digit, np.expand_dims(pred_token, axis=0)), axis=-1)
 
+    digital_response = digit[0][response_start_index:]
+    response_token_length = len(digital_response)
+    
     # Post-Process Data
-    texts = []
-    response_token_length = len(digit[0][response_start_index:])
-    for item in digit[0][response_start_index:]:
-        texts.append(tokenizer.dictionary[item])
-
-    response = "".join(texts)
-    response = re.sub("</w>", " ", response)
+    response = tokenizer.decode(digital_response)
+    
     response_text_length = len(response.split(" "))
-    response = response.strip()
     end_time = time.time()
 
     # Response
