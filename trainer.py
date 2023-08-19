@@ -5,9 +5,9 @@ import torch.nn.functional as F
 from typing import Callable
 from gpt import GPT
 import os
-from metric import GPTMetric
+from eval.metric import GPTMetric
 from torch.utils.data import TensorDataset, DataLoader
-from loss import GPTLoss
+from eval.loss import GPTLoss
 import math
 from sklearn.model_selection import train_test_split
 import mlflow
