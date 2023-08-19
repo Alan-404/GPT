@@ -1,0 +1,28 @@
+models:
+- name: origin
+  hyper_params:
+    n: 12
+    d_model: 768
+    heads: 12
+    d_ff: 3072
+    activation: gelu
+    dropout_rate: 0.1
+    eps: 0.02
+- name: n_10
+  hyper_params:
+    n: 10
+    d_model: 768
+    heads: 12
+    d_ff: 3072
+    activation: gelu
+    dropout_rate: 0.1
+    eps: 0.02
+- name: n_8
+  hyper_params:
+    n: 8
+    d_model: 768
+    heads: 12
+    d_ff: 3072
+    activation: gelu
+    dropout_rate: 0.1
+    eps: 0.02

@@ -80,6 +80,10 @@ if __name__ == '__main__':
     parser.add_argument("--dropout_rate", type=float, default=0.1)
     parser.add_argument("--eps", type=float, default=0.02)
     parser.add_argument("--activation", type=str, default='gelu')
+
+    # Hyper-params Config
+    parser.add_argument("--hyper_path", type=str, default='./model.yml')
+    parser.add_argument("--model_name", type=str, default=None)
     
     # Traning Config
     parser.add_argument("--device", type=str, default='cpu')
@@ -114,6 +118,27 @@ if __name__ == '__main__':
 
     if args.val_batch_size is None:
         args.val_batch_size = args.batch_size
+
+    if args.model_name is not None:
+        import yaml
+        from yaml.loader import SafeLoader
+
+        with open(args.hyper_path) as file:
+            model_info = yaml.load(file, Loader=SafeLoader)
+
+        params = None
+        for item in model_info['models']:
+            if item['name'] == args.model_name:
+                params = item['hyper_params']
+        
+        assert params is not None
+        args.n = int(params['n'])
+        args.d_model = int(params['d_model'])
+        args.heads = int(params['heads'])
+        args.d_ff = int(params['d_ff'])
+        args.activation = activation_functions_dict[str(params['activation'])]
+        args.dropout_rate = float(params['dropout_rate'])
+        args.eps = float(params['eps'])
 
     train_model(
         data_path=args.data_path,
