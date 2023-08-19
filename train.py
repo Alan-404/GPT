@@ -67,11 +67,12 @@ if __name__ == '__main__':
 
     parser = ArgumentParser()
 
+    # Data Config
     parser.add_argument("--data_path", type=str)
     parser.add_argument("--tokenizer_path", type=str)
     parser.add_argument("--checkpoint", type=str)
 
-    # model config
+    # Model Config
     parser.add_argument("--n", type=int, default=12)
     parser.add_argument("--d_model", type=int, default=768)
     parser.add_argument("--heads", type=int, default=12)
@@ -80,20 +81,20 @@ if __name__ == '__main__':
     parser.add_argument("--eps", type=float, default=0.02)
     parser.add_argument("--activation", type=str, default='gelu')
     
-    # training config
+    # Traning Config
     parser.add_argument("--device", type=str, default='cpu')
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--mini_batch", type=int, default=1)
     parser.add_argument("--learning_rate", type=float, default=3e-5)
 
-    # validation config
+    # Validation Config
     parser.add_argument("--val_type", type=str, default=None)
     parser.add_argument("--val_batch_size", type=int, default=None)
     parser.add_argument("--num_folds", type=int, default=1)
     parser.add_argument("--val_size", type=float, default=0.2)
 
-    # Tracking config
+    # Tracking Config
     parser.add_argument("--tracking", type=bool, default=False)
     parser.add_argument("--tracking_uri", type=str, default=None)
     parser.add_argument("--experiment_name", type=str, default=None)
