@@ -33,8 +33,9 @@ class ChatMessage(BaseModel):
 @app.post("/chat")
 def hello(chat_message: ChatMessage):
     start_time = time.time()
+    request_text_length = len(chat_message.message.split(" "))
     digit = tokenizer.text_to_sequences([chat_message.message], start_token=True, sep_token=True)
-
+    request_token_length = digit.shape[1]
     response_start_index = digit.shape[-1]
 
     for _ in range(args.max_ctx):
@@ -43,22 +44,28 @@ def hello(chat_message: ChatMessage):
             {'input': digit}
         )[0]
 
-        pred = np.argmax(output[:, -1, :], axis=-1)
-        if pred == end_token:
+        pred_token = np.argmax(output[:, -1, :], axis=-1)
+        if pred_token == end_token:
             break
 
-        digit = np.concatenate((digit, np.expand_dims(pred, axis=0)), axis=-1)
+        digit = np.concatenate((digit, np.expand_dims(pred_token, axis=0)), axis=-1)
 
     texts = []
-
+    response_token_length = len(digit[0][response_start_index:])
     for item in digit[0][response_start_index:]:
         texts.append(tokenizer.dictionary[item])
 
     response = "".join(texts)
     response = re.sub("</w>", " ", response)
+    response_text_length = len(response.split(" "))
     response = response.strip()
     end_time = time.time()
-    return {'response': response, "time_out": end_time-start_time}
+    return {'response': response, 
+            "time_out": end_time-start_time,
+            "request_text_length": request_text_length,
+            "request_token_length": request_token_length,
+            'response_text_length': response_text_length,
+            "response_token_length": response_token_length}
 
 
 if __name__ == '__main__':
