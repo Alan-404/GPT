@@ -286,18 +286,17 @@ class GPTTrainer:
         self.validate(dataloader)
 
 
-@staticmethod
-def generate(model: nn.Module, text: torch.Tensor, max_length: int, end_token: int):
-    model.eval()
-    for _ in range(max_length):
-        output = model(text)
-        _, pred = torch.max(output[:, -1, :], dim=-1)
+    def generate(self, text: torch.Tensor, max_length: int, end_token: int):
+        self.model.eval()
+        for _ in range(max_length):
+            output = self.model(text)
+            _, pred = torch.max(output[:, -1, :], dim=-1)
 
-        if pred == end_token:
-            break
+            if pred == end_token:
+                break
 
-        text = torch.cat((text, pred.unsqueeze(0)), dim=-1)
-    return text
+            text = torch.cat((text, pred.unsqueeze(0)), dim=-1)
+        return text
 
 activation_functions_dict = {
     "gelu": F.gelu,
