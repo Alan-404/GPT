@@ -1,5 +1,4 @@
-from preprocess.data import Tokenizer
-import pickle
+from preprocessing.data import Tokenizer
 import json
 import io
 
