@@ -275,6 +275,9 @@ class GPTTrainer:
                 mlflow.log_metric("Validation BLEU Score", total_score/total_batches, step=self.epoch)
         else:
             print(f"Evaluation Result: Loss: {(total_loss/total_batches):.4f} Score: {(total_score/total_batches):.4f}")
+            if tracking:
+                mlflow.log_metric("Test Loss", total_loss/total_batches, step=self.epoch)
+                mlflow.log_metric("Test Score", total_score/total_batches, step=self.epoch)
         
 
     def evaluate(self, data: torch.Tensor, batch_size: int = 1):
