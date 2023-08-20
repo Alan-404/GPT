@@ -32,12 +32,12 @@ class Tokenizer:
     
     def save_tokenizer(self, path: str):
         obj = {
-            "dictionary": self.dictionary,
-            "vocabulary": self.vocab_dict,
-            "special_tokens": self.special_tokens,
-            "info_tokens": self.info,
-            "original_size": self.original_size,
-            'epoch': self.epoch
+            TokenizerInfo.DICTIONARY: self.dictionary,
+            TokenizerInfo.VOCABULARY: self.vocab_dict,
+            TokenizerInfo.SPECIAL_TOKENS: self.special_tokens,
+            TokenizerInfo.INFO_TOKENS: self.info,
+            TokenizerInfo.ORIGINAL_SIZE: self.original_size,
+            TokenizerInfo.EPOCH: self.epoch
         }
         with open(path, 'wb') as file:
             pickle.dump(obj, file, protocol=pickle.HIGHEST_PROTOCOL)
@@ -46,12 +46,12 @@ class Tokenizer:
         if os.path.exists(path):
             with open(path, 'rb') as file:
                 data = pickle.load(file)
-            self.dictionary = data['dictionary']
-            self.vocab_dict = data['vocabulary']
-            self.special_tokens = data['special_tokens']
-            self.original_size = data['original_size']
-            self.info = data['info_tokens']
-            self.epoch = data['epoch']
+            self.dictionary = data[TokenizerInfo.DICTIONARY]
+            self.vocab_dict = data[TokenizerInfo.VOCABULARY]
+            self.special_tokens = data[TokenizerInfo.SPECIAL_TOKENS]
+            self.original_size = data[TokenizerInfo.ORIGINAL_SIZE]
+            self.info = data[TokenizerInfo.INFO_TOKENS]
+            self.epoch = data[TokenizerInfo.EPOCH]
 
     def cal_total_vocab(self, data: list):
         dictionary = []
@@ -242,8 +242,12 @@ class Tokenizer:
         response = "".join(text)
         response = re.sub("</w>", " ", response)
         response = response.strip()
-
-        return response
+        # response = self.cleaner.decode(response)
+        # response = re.sub(r"(\si\s |i\s)", " I ", response)
+        for key in self.info:
+            response = re.sub(key, self.info[key], response)
+        
+        return response.strip().capitalize()
     
     def get_data(self, path: str) -> np.ndarray:
         with open(path, 'rb') as file:
@@ -257,6 +261,10 @@ class Cleaner:
         seq = seq.strip()
         seq = re.sub("\s\s+", " ", seq)
         seq = seq.lower()
+        return seq
+    def decode(self, seq: str):
+        for pattern in self.puncs:
+            seq = re.sub(fr" {pattern} ", rf'{pattern}', seq)
         return seq
 class Replacer:
     def __init__(self) -> None:
@@ -294,3 +302,12 @@ def load_data(path):
 def save_data(path: str, data):
     with open(path, 'wb') as file:
         pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+class TokenizerInfo:
+    DICTIONARY = 'dictionary'
+    VOCABULARY = 'vocabulary'
+    SPECIAL_TOKENS = 'special_tokens'
+    INFO_TOKENS = 'info_tokens'
+    ORIGINAL_SIZE = 'original_size'
+    EPOCH = 'epoch'

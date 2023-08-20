@@ -3,6 +3,7 @@ import onnxruntime as ort
 import uvicorn
 from preprocessing.data import Tokenizer
 from argparse import ArgumentParser
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import numpy as np
 import time
@@ -24,9 +25,18 @@ assert os.path.exists(args.model) == True and os.path.exists(args.tokenizer)
 # Config App and APIs
 app = FastAPI()
 
-providers = ['CPUExecutionProvider']
+# Cors Config
+origins = ['*']
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Device Config and Load ONNX Model
+providers = ['CPUExecutionProvider']
 if args.device.strip().lower() in ['cuda', 'gpu'] and ort.get_device() == 'GPU':
     providers = ['CUDAExecutionProvider'] + providers
 

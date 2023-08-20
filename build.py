@@ -1,9 +1,10 @@
-from trainer import GPTTrainer
+from trainer import GPTTrainer, activation_functions_dict
 from preprocessing.data import Tokenizer
 import torch
+from typing import Callable
 import os
 
-def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: str, model_type: str):
+def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: str, model_type: str, n: int, d_model: int, heads: int, d_ff: int, activation: Callable[[torch.Tensor], torch.Tensor], dropout_rate: float, eps: float):
     # Check Config Paths
     assert os.path.exists(checkpoint) == True and os.path.exists(tokenizer_path) == True
     
@@ -18,7 +19,14 @@ def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: s
     trainer = GPTTrainer(
         token_size=len(tokenizer.dictionary),
         device=device,
-        checkpoint=checkpoint
+        checkpoint=checkpoint,
+        n=n,
+        d_model=d_model,
+        heads=heads,
+        d_ff=d_ff,
+        activation=activation,
+        dropout_rate=dropout_rate,
+        eps=eps
     )
     # Set Model Mode to Evaludation
     trainer.model.eval()
@@ -39,6 +47,16 @@ if __name__ == '__main__':
 
     parser = ArgumentParser()
 
+    # Model Config
+    parser.add_argument("--n", type=int, default=12, help="Number of Decoder Layers")
+    parser.add_argument("--d_model", type=int, default=768, help="Number of Word Embedding Dimension.")
+    parser.add_argument("--heads", type=int, default=12, help="Number of heads in Multi-head Attention Layer.")
+    parser.add_argument("--d_ff", type=int, default=3072, help="Number of hidden dimensions in Position wise Feed Forward Networks.")
+    parser.add_argument("--dropout_rate", type=float, default=0.1, help="Probability of set 0.")
+    parser.add_argument("--eps", type=float, default=0.02, help="Epsilon in Norm Layer.")
+    parser.add_argument("--activation", type=str, default='gelu', help="Activation function between 2 layers in Position wise Feed Forward Networks.")
+
+    #
     parser.add_argument("--checkpoint", type=str)
     parser.add_argument("--tokenizer_path", type=str)
     parser.add_argument("--build_path", type=str)
@@ -52,5 +70,12 @@ if __name__ == '__main__':
         tokenizer_path=args.tokenizer_path,
         build_path=args.build_path,
         device=args.device,
-        model_type=args.model_type
+        model_type=args.model_type,
+        n=args.n,
+        d_model=args.d_model,
+        heads=args.heads,
+        d_ff=args.d_ff,
+        activation=activation_functions_dict[args.activation],
+        dropout_rate=args.dropout_rate,
+        eps=args.eps
     )
