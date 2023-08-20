@@ -5,12 +5,13 @@ import numpy as np
 import dill
 
 class Tokenizer:
-    def __init__(self, pretrained: str = None, special_tokens: list = []) -> None:
+    def __init__(self, pretrained: str = None, special_tokens: list = [], info_tokens: dict = {}) -> None:
         init_tokens = ["<pad>", "<start>", "<end>", "<oov>", "<sep>"]
         self.cleaner = Cleaner()
         self.replacer = Replacer()
         self.vocab_dict = dict()
         self.dictionary = []
+        self.info = info_tokens
 
         self.original_size = 0
         self.epoch = 0
@@ -20,7 +21,9 @@ class Tokenizer:
             self.load_tokenizer(self.pretrained)
         else:
             self.special_tokens = init_tokens + special_tokens
-    
+            for key in info_tokens.keys():
+                self.special_tokens.append(key)
+
     def get_special_token(self, name: str):
         name = f"<{name}>"
         assert name in self.dictionary
@@ -32,6 +35,7 @@ class Tokenizer:
             "dictionary": self.dictionary,
             "vocabulary": self.vocab_dict,
             "special_tokens": self.special_tokens,
+            "info_tokens": self.info,
             "original_size": self.original_size,
             'epoch': self.epoch
         }
@@ -46,6 +50,7 @@ class Tokenizer:
             self.vocab_dict = data['vocabulary']
             self.special_tokens = data['special_tokens']
             self.original_size = data['original_size']
+            self.info = data['info_tokens']
             self.epoch = data['epoch']
 
     def cal_total_vocab(self, data: list):

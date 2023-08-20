@@ -68,18 +68,18 @@ if __name__ == '__main__':
     parser = ArgumentParser()
 
     # Data Config
-    parser.add_argument("--data_path", type=str)
-    parser.add_argument("--tokenizer_path", type=str)
-    parser.add_argument("--checkpoint", type=str)
+    parser.add_argument("--data_path", type=str, help="Path of Pre-processed Dataset.")
+    parser.add_argument("--tokenizer_path", type=str, help="Path of trained Tokenizer.")
+    parser.add_argument("--checkpoint", type=str, help="Path of checkpoint you want to load and save.")
 
     # Model Config
-    parser.add_argument("--n", type=int, default=12)
-    parser.add_argument("--d_model", type=int, default=768)
-    parser.add_argument("--heads", type=int, default=12)
-    parser.add_argument("--d_ff", type=int, default=3072)
-    parser.add_argument("--dropout_rate", type=float, default=0.1)
-    parser.add_argument("--eps", type=float, default=0.02)
-    parser.add_argument("--activation", type=str, default='gelu')
+    parser.add_argument("--n", type=int, default=12, help="Number of Decoder Layers")
+    parser.add_argument("--d_model", type=int, default=768, help="Number of Word Embedding Dimension.")
+    parser.add_argument("--heads", type=int, default=12, help="Number of heads in Multi-head Attention Layer.")
+    parser.add_argument("--d_ff", type=int, default=3072, help="Number of hidden dimensions in Position wise Feed Forward Networks.")
+    parser.add_argument("--dropout_rate", type=float, default=0.1, help="Probability of set 0.")
+    parser.add_argument("--eps", type=float, default=0.02, help="Epsilon in Norm Layer.")
+    parser.add_argument("--activation", type=str, default='gelu', help="Activation function between 2 layers in Position wise Feed Forward Networks.")
 
     # Hyper-params Config
     parser.add_argument("--hyper_path", type=str, default='./model.yml')

@@ -1,5 +1,5 @@
 import torch
-from preprocess.data import Tokenizer
+from preprocessing.data import Tokenizer
 from trainer import GPTTrainer
 import re
 

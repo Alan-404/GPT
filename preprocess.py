@@ -13,7 +13,7 @@ def text_to_digits(dataset: list[str], tokenizer: Tokenizer, max_length: int = N
 
 def extract_dataset(dataset_path: str):
     raw_dataset = json.load(open(dataset_path, encoding='utf-8'))
-    default_data = io.open("./datasets/vi_qa.txt", encoding='utf-8').read().strip().split('\n')
+    default_data = io.open("./datasets/en_qa.txt", encoding='utf-8').read().strip().split('\n')
 
     dataset = []
     for item in raw_dataset['data']:
@@ -21,10 +21,11 @@ def extract_dataset(dataset_path: str):
             for output in item['outputs']:
                 dataset.append(f"{input} <sep> {output}")
     
-    tokens = list(raw_dataset['dictionary'].keys()) + raw_dataset['action']
+    special_tokens =  raw_dataset['action']
 
+    info_tokens = raw_dataset['dictionary']
     dataset += default_data
-    return dataset, tokens
+    return dataset, special_tokens, info_tokens
 
 
 def program(
@@ -35,9 +36,9 @@ def program(
         start_token: bool,
         end_token: bool
     ):
-    dataset, tokens = extract_dataset(dataset_path)
+    dataset, special_tokens, info_tokens = extract_dataset(dataset_path)
     while True:
-        tokenizer = Tokenizer(tokenizer_path, tokens)
+        tokenizer = Tokenizer(tokenizer_path, special_tokens, info_tokens)
         max_iteration_input = input("Input max iteration in training tokenizer: ")
         sigma_input = input("Input Sigma: ")
         tokenizer = train_tokenizer(tokenizer, dataset, int(max_iteration_input), float(sigma_input))
