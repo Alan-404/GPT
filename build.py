@@ -1,4 +1,5 @@
 from trainer import GPTTrainer, activation_functions_dict
+from gpt import GPT
 from preprocessing.data import Tokenizer
 import torch
 from typing import Callable
@@ -15,11 +16,8 @@ def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: s
     # Load Tokenizer
     tokenizer = Tokenizer(tokenizer_path)
 
-    # Load Trainer of Model
-    trainer = GPTTrainer(
+    model = GPT(
         token_size=len(tokenizer.dictionary),
-        device=device,
-        checkpoint=checkpoint,
         n=n,
         d_model=d_model,
         heads=heads,
@@ -28,18 +26,21 @@ def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: s
         dropout_rate=dropout_rate,
         eps=eps
     )
-    # Set Model Mode to Evaludation
-    trainer.model.eval()
+
+    model.load_state_dict(torch.load(checkpoint)['model_state_dict'])
+    model.eval()
+
+    model.to(device)
 
     # Init input of Model
     dummpy_input = torch.randint(low=0, high=len(tokenizer.dictionary), size=(1, 20))
 
     if model_type == 'onnx':
         # Export model to ONNX
-        torch.onnx.export(trainer.model, dummpy_input.to(device), build_path, input_names=["input"], output_names=['output'], dynamic_axes={"input": {0: 'batch_size', 1: "n_ctx"}, "output": {0: "batch_size", 1: "n_ctx"}})
+        torch.onnx.export(model, dummpy_input.to(device), build_path, input_names=["input"], output_names=['output'], dynamic_axes={"input": {0: 'batch_size', 1: "n_ctx"}, "output": {0: "batch_size", 1: "n_ctx"}})
     else:
         # Export model to JIT
-        traced_model = torch.jit.trace(trainer.model, example_inputs=dummpy_input.to(device))
+        traced_model = torch.jit.trace(model, example_inputs=dummpy_input.to(device))
         torch.jit.save(traced_model, build_path)
 
 if __name__ == '__main__':

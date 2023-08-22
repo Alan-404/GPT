@@ -86,8 +86,8 @@ if __name__ == '__main__':
     parser.add_argument("--model_name", type=str, default=None)
     
     # Traning Config
-    parser.add_argument("--device", type=str, default='cpu')
-    parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--device", type=str, default='cpu', help="Device for Training Stage")
+    parser.add_argument("--epochs", type=int, default=1, help="Number of Training Epochs")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--mini_batch", type=int, default=1)
     parser.add_argument("--learning_rate", type=float, default=3e-5)
@@ -105,9 +105,7 @@ if __name__ == '__main__':
     parser.add_argument("--run_id", type=str, default=None)
     parser.add_argument("--run_name", type=str, default=None)
 
-
     args = parser.parse_args()
-
 
     assert args.data_path is not None or args.tokenizer_path is not None
 

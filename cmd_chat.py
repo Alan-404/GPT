@@ -39,14 +39,9 @@ def onnx_response(tokenizer_path: str, checkpoint: str, device: str, max_ctx: in
 
             digits = np.concatenate((digits, np.expand_dims(pred_token, axis=0)), axis=-1)
         infer_end_time = time.time()
-        response_tokens = []
         
-        for item in digits[0][message_length:]:
-            response_tokens.append(tokenizer.dictionary[item])
-
-        response = "".join(response_tokens)
-        response = re.sub('</w>', " ", response)
-
+        response = tokenizer.decode(digits[0][message_length:])
+        
         print(f"Response: {response}")
         print(f"Total inference time: {infer_end_time - infer_start_time}")
 
@@ -86,16 +81,12 @@ def jit_response(tokenizer_path: str, checkpoint: str, device: str, max_ctx: int
                 break
 
             digits = torch.concatenate((digits, pred_token.unsqueeze(0)), dim=-1)
+            print(digits)
         infer_end_time = time.time()
 
-        response_tokens = []
-        for item in digits[0][message_length:]:
-            response_tokens.append(tokenizer.dictionary[item.item()])
+        response = tokenizer.decode(digits[0][message_length:])
 
-        response = "".join(response_tokens)
-        response = re.sub('</w>', " ", response)
-
-        print(f"Response: {response}")
+        print(f"Response\n: {response}")
         print(f"Total inference time: {infer_end_time - infer_start_time}")
 
         exit = input('Do you want to exit? (y/n): ').lower().strip() == 'y'
@@ -130,8 +121,7 @@ def trainer_repsonse(tokenizer_path: str, checkpoint: str, device: str, max_ctx:
         for item in digits_output[0][message_length:]:
             response_tokens.append(tokenizer.dictionary[item.item()])
 
-        response = "".join(response_tokens)
-        response = re.sub('</w>', " ", response)
+        response = tokenizer.decode(response_tokens)
 
         print(f"Response: {response}")
         print(f"Total inference time: {infer_end_time - infer_start_time}")

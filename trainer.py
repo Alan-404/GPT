@@ -212,7 +212,7 @@ class GPTTrainer:
                 num_folds = 1
                 if 'num_folds' in validation and type(validation['num_folds'] == 'int'):
                     num_folds = validation['num_folds']
-                assert epochs > num_folds
+                assert epochs >= num_folds
 
                 epochs = epochs // num_folds
                 num_per_fold = math.ceil(data.size(0)/num_folds)
