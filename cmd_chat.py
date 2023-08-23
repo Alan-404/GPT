@@ -116,12 +116,7 @@ def trainer_repsonse(tokenizer_path: str, checkpoint: str, device: str, max_ctx:
         message_length = digits.shape[1]
         digits_output = trainer.generate(digits, max_ctx, tokenizer.get_special_token("end"))
         infer_end_time = time.time()
-        response_tokens = []
-
-        for item in digits_output[0][message_length:]:
-            response_tokens.append(tokenizer.dictionary[item.item()])
-
-        response = tokenizer.decode(response_tokens)
+        response = tokenizer.decode(digits_output[0][message_length:])
 
         print(f"Response: {response}")
         print(f"Total inference time: {infer_end_time - infer_start_time}")
