@@ -168,9 +168,6 @@ class Tokenizer:
                     break
         return embedding
     
-    def get_special_tokens(self, token):
-        return self.dictionary.index(token)
-    
     def padding_sequence(self, sequence, padding: str, maxlen: int) -> np.ndarray:
         delta = maxlen - len(sequence)
         zeros = np.zeros(delta, dtype=np.int64)
@@ -208,15 +205,15 @@ class Tokenizer:
             words = seq.split(" ")
             temp = []
             if start_token:
-                temp += [self.get_special_tokens("<start>")]
+                temp += [self.get_special_token("start")]
             for word in words:
                 special_token = word in self.special_tokens
                 digit_word = self.find(word, special_token)
                 temp += digit_word
             if sep_token:
-                temp += [self.get_special_tokens("<sep>")]
+                temp += [self.get_special_token("sep")]
             elif end_token:
-                temp += [self.get_special_tokens("<end>")]
+                temp += [self.get_special_token("end")]
             if maxlen < len(temp):
                 maxlen = len(temp)
             digits.append(np.array(temp))
@@ -241,13 +238,14 @@ class Tokenizer:
 
         response = "".join(text)
         response = re.sub("</w>", " ", response)
-        response = response.strip()
-        # response = self.cleaner.decode(response)
-        # response = re.sub(r"(\si\s |i\s)", " I ", response)
-        for key in self.info:
-            response = re.sub(key, self.info[key], response)
+        response = re.sub(" ai ", " AI ", response)
         
-        return response.strip().capitalize()
+        for key in self.info:
+            response = re.sub(key, str(self.info[key]).capitalize(), response)
+        
+        response = re.sub(f"\s{self.cleaner.puncs}\s", r"\1 ", response)
+
+        return response.strip().title()
     
     def get_data(self, path: str) -> np.ndarray:
         with open(path, 'rb') as file:
@@ -262,10 +260,7 @@ class Cleaner:
         seq = re.sub("\s\s+", " ", seq)
         seq = seq.lower()
         return seq
-    def decode(self, seq: str):
-        for pattern in self.puncs:
-            seq = re.sub(fr" {pattern} ", rf'{pattern}', seq)
-        return seq
+
 class Replacer:
     def __init__(self) -> None:
         self.replace_patterns = [
@@ -284,13 +279,11 @@ class Replacer:
             (r"\'s", " 's")
         ]
 
-
     def replace(self, sequence: list) -> list:
         for (pattern, repl) in self.replace_patterns:
             sequence = re.sub(pattern, repl, sequence)
 
         return sequence
-
 
 def load_data(path):
     if os.path.exists(path):
