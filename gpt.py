@@ -20,7 +20,6 @@ class GPT(nn.Module):
         x = self.embed(x)
         x = self.decoder(x, mask)
         x = self.norm_layer(x)
-        x = F.dropout(x, p=0.1, training=True)
         x = self.classifier(x)
         return x
 
