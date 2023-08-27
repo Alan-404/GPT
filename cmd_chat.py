@@ -42,7 +42,7 @@ def onnx_response(tokenizer_path: str, checkpoint: str, device: str, max_ctx: in
         
         response = tokenizer.decode(digits[0][message_length:])
         
-        print(f"Response: {response}")
+        print(f"Response:\n{response}")
         print(f"Total inference time: {infer_end_time - infer_start_time}")
 
         exit = input('Do you want to exit? (y/n): ').lower().strip() == 'y'
@@ -81,7 +81,7 @@ def jit_response(tokenizer_path: str, checkpoint: str, device: str, max_ctx: int
                 break
 
             digits = torch.concatenate((digits, pred_token.unsqueeze(0)), dim=-1)
-            print(digits)
+
         infer_end_time = time.time()
 
         response = tokenizer.decode(digits[0][message_length:])

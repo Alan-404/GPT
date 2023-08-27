@@ -1,42 +1,139 @@
-#%%
 import tensorrt as trt
+import numpy as np
+import pycuda.driver as cuda
+import pycuda.autoinit
+import os
+from preprocess import Tokenizer
+import time
 
-TRT_LOGGER = trt.Logger()
- 
-def build_engine(onnx_file_path):
-    # initialize TensorRT engine and parse ONNX model
-    builder = trt.Builder(TRT_LOGGER)
-    network = builder.create_network()
-    parser = trt.OnnxParser(network, TRT_LOGGER)
-     
-    # parse ONNX
-    with open(onnx_file_path, 'rb') as model:
-        print('Beginning ONNX file parsing')
-        parser.parse(model.read())
-    print('Completed parsing of ONNX file')
+INPUT_NAME = 'input'
 
-    # builder.max_workspace_size = 1 << 30
-    # we have only one image in batch
-    builder.max_batch_size = 1
-    # use FP16 mode if possible
-    if builder.platform_has_fast_fp16:
-        builder.fp16_mode = True
-    print('Building an engine...')
-    engine = builder.build_cuda_engine(network)
+INPUT_PRECISION = np.int32
+OUTPUT_PRECISION = np.float32
+
+def load_engine(engine_path: str):
+    if os.path.exists(engine_path) == False:
+        print("Not Found Engine Path")
+        return None
+
+    with open(engine_path, 'rb') as file:
+        engine_data = file.read()
+    
+    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
+    runtime = trt.Runtime(TRT_LOGGER)
+    engine = runtime.deserialize_cuda_engine(engine_data)
+
+    return engine
+
+
+def allocate_buffer_memory(max_ctx: int, token_size: int, types: list[np.dtype, np.dtype]):
+    input_buffer = cuda.mem_alloc(max_ctx * np.dtype(types[0]).itemsize)
+    output_buffer = cuda.mem_alloc(max_ctx * token_size * np.dtype(types[1]).itemsize)
+    bindings = [int(input_buffer), int(output_buffer)]
+    return bindings
+
+def generate(digits, context, bindings, max_ctx, token_size, end_token):
+    for _ in range(max_ctx):
+        print(digits.shape)
+        cuda.memcpy_htod(bindings[0], digits)
+        context.set_input_shape(name=INPUT_NAME, shape=(1, digits.shape[-1]))
+        context.execute_v2(bindings=bindings)
+        output_data = np.empty(shape=(1, digits.shape[-1], token_size), dtype=np.float32)
+        cuda.memcpy_dtoh(output_data, bindings[1])
+        pred_token = np.argmax(output_data[:, -1, :], axis=-1)
+
+        if pred_token == end_token:
+            break
+
+        digits = np.concatenate((digits, np.array([pred_token], dtype=np.int32)), axis=-1)
+
+    return digits
+
+def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
+    if os.path.exists(tokenizer_path) == False:
+        return None
+    tokenizer = Tokenizer(tokenizer_path)
+    end_token = tokenizer.get_special_token("end")
+    if os.path.exists(engine_path) == False:
+        print("Not Found Engine Path")
+        return None
+
+    load_start_time = time.time()
+    with open(engine_path, 'rb') as file:
+        engine_data = file.read()
+    
+    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
+    runtime = trt.Runtime(TRT_LOGGER)
+    engine = runtime.deserialize_cuda_engine(engine_data)
+    
+    if engine is None:
+        return None
+    
+    output_binding = engine.get_binding_name(1)
+
+    output_shape = engine.get_binding_shape(output_binding)
+
+    token_size = output_shape[-1]
+    
+    input_buffer = cuda.mem_alloc(max_ctx * np.dtype(INPUT_PRECISION).itemsize)
+    output_buffer = cuda.mem_alloc(max_ctx * token_size * np.dtype(OUTPUT_PRECISION).itemsize)
+    bindings = [int(input_buffer), int(output_buffer)]
+    
     context = engine.create_execution_context()
-    print("Completed creating Engine")
- 
-    return engine, context
-# %%
-engine, context = build_engine("./built_models/gpt.onnx")
-# %%
-builder = trt.Builder(TRT_LOGGER)
-# %%
-dir(builder)
-# %%
-with open('./learn.txt', 'w') as file:
-    for item in dir(builder):
-        file.write(item + "\n")
-# %%
+    load_end_time = time.time()
 
-# %%
+    print(f"Loading Time: {load_end_time - load_start_time}")
+
+    while True:
+        message = input("Input Message: ")
+        digits = tokenizer.text_to_sequences([message], start_token=True, sep_token=True)
+        digits = digits.astype(np.int32)
+        message_length = digits.shape[-1]
+
+        try:
+            infer_start_time = time.time()
+            for _ in range(max_ctx):
+                cuda.memcpy_htod(bindings[0], digits)
+                context.set_input_shape(name=INPUT_NAME, shape=(1, digits.shape[-1]))
+                context.execute_v2(bindings=bindings)
+                output_data = np.empty(shape=(1, digits.shape[-1], token_size), dtype=np.float32)
+                cuda.memcpy_dtoh(output_data, bindings[1])
+                pred_token = np.argmax(output_data[:, -1, :], axis=-1)
+                if pred_token == end_token:
+                    break
+
+                digits = np.concatenate((digits, np.array([pred_token], dtype=np.int32)), axis=-1)
+            infer_end_time = time.time()
+            response = tokenizer.decode(digits[0][message_length:])
+        
+        except Exception as e:
+            print(str(e))
+            response = "BUG"
+            infer_end_time = 0
+
+        
+        print(f"Response:\n{response}")
+        print(f"Inference Time: {infer_end_time - infer_start_time}")
+
+        exit = input('Do you want to exit? (y/n): ').lower().strip() == 'y'
+
+        if exit:
+            break
+
+if __name__ == "__main__":
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser()
+
+    parser.add_argument("--engine_path", type=str)
+    parser.add_argument("--tokenizer_path", type=str)
+    parser.add_argument("--max_ctx", type=int, default=250)
+
+    args = parser.parse_args()
+
+    cmd_chat(
+        engine_path=args.engine_path,
+        tokenizer_path=args.tokenizer_path,
+        max_ctx=args.max_ctx
+    )
+
