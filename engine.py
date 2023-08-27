@@ -1,53 +1,15 @@
 import tensorrt as trt
 import numpy as np
-import pycuda.driver as cuda
-import pycuda.autoinit
+from pycuda import driver as cuda, autoinit
 import os
 from preprocess import Tokenizer
 import time
+import re
 
 INPUT_NAME = 'input'
 
 INPUT_PRECISION = np.int32
 OUTPUT_PRECISION = np.float32
-
-def load_engine(engine_path: str):
-    if os.path.exists(engine_path) == False:
-        print("Not Found Engine Path")
-        return None
-
-    with open(engine_path, 'rb') as file:
-        engine_data = file.read()
-    
-    TRT_LOGGER = trt.Logger(trt.Logger.INFO)
-    runtime = trt.Runtime(TRT_LOGGER)
-    engine = runtime.deserialize_cuda_engine(engine_data)
-
-    return engine
-
-
-def allocate_buffer_memory(max_ctx: int, token_size: int, types: list[np.dtype, np.dtype]):
-    input_buffer = cuda.mem_alloc(max_ctx * np.dtype(types[0]).itemsize)
-    output_buffer = cuda.mem_alloc(max_ctx * token_size * np.dtype(types[1]).itemsize)
-    bindings = [int(input_buffer), int(output_buffer)]
-    return bindings
-
-def generate(digits, context, bindings, max_ctx, token_size, end_token):
-    for _ in range(max_ctx):
-        print(digits.shape)
-        cuda.memcpy_htod(bindings[0], digits)
-        context.set_input_shape(name=INPUT_NAME, shape=(1, digits.shape[-1]))
-        context.execute_v2(bindings=bindings)
-        output_data = np.empty(shape=(1, digits.shape[-1], token_size), dtype=np.float32)
-        cuda.memcpy_dtoh(output_data, bindings[1])
-        pred_token = np.argmax(output_data[:, -1, :], axis=-1)
-
-        if pred_token == end_token:
-            break
-
-        digits = np.concatenate((digits, np.array([pred_token], dtype=np.int32)), axis=-1)
-
-    return digits
 
 def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
     if os.path.exists(tokenizer_path) == False:
@@ -68,12 +30,9 @@ def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
     
     if engine is None:
         return None
-    
-    output_binding = engine.get_binding_name(1)
 
-    output_shape = engine.get_binding_shape(output_binding)
 
-    token_size = output_shape[-1]
+    token_size = len(tokenizer.dictionary)
     
     input_buffer = cuda.mem_alloc(max_ctx * np.dtype(INPUT_PRECISION).itemsize)
     output_buffer = cuda.mem_alloc(max_ctx * token_size * np.dtype(OUTPUT_PRECISION).itemsize)
@@ -96,7 +55,7 @@ def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
                 cuda.memcpy_htod(bindings[0], digits)
                 context.set_input_shape(name=INPUT_NAME, shape=(1, digits.shape[-1]))
                 context.execute_v2(bindings=bindings)
-                output_data = np.empty(shape=(1, digits.shape[-1], token_size), dtype=np.float32)
+                output_data = np.zeros(shape=(1, digits.shape[-1], token_size), dtype=np.float32)
                 cuda.memcpy_dtoh(output_data, bindings[1])
                 pred_token = np.argmax(output_data[:, -1, :], axis=-1)
                 if pred_token == end_token:
@@ -105,6 +64,8 @@ def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
                 digits = np.concatenate((digits, np.array([pred_token], dtype=np.int32)), axis=-1)
             infer_end_time = time.time()
             response = tokenizer.decode(digits[0][message_length:])
+            response = re.sub("<new_line>", "\n", response)
+            response = response.title()
         
         except Exception as e:
             print(str(e))

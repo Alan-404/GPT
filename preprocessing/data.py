@@ -245,7 +245,7 @@ class Tokenizer:
         
         response = re.sub(f"\s{self.cleaner.puncs}\s", r"\1 ", response)
 
-        return response.strip().title()
+        return response.strip()
     
     def get_data(self, path: str) -> np.ndarray:
         with open(path, 'rb') as file:
