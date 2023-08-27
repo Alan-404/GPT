@@ -37,7 +37,7 @@ def build_model(checkpoint: str, tokenizer_path: str, build_path: str, device: s
 
     if model_type == 'onnx':
         # Export model to ONNX
-        torch.onnx.export(model, dummpy_input.to(device), build_path, input_names=["input"], output_names=['output'], verbose=True, opset_version=12, dynamic_axes={"input": {0: 'batch_size', 1: "n_ctx"}, "output": {0: "batch_size", 1: "n_ctx"}})
+        torch.onnx.export(model, dummpy_input.to(device), build_path, input_names=["input"], output_names=['output'], dynamic_axes={"input": {0: 'batch_size', 1: "n_ctx"}, "output": {0: "batch_size", 1: "n_ctx"}})
     else:
         # Export model to JIT
         traced_model = torch.jit.trace(model, example_inputs=dummpy_input.to(device))

@@ -5,6 +5,7 @@ import re
 import numpy as np
 import onnxruntime as ort
 import time
+import pandas as pd
 
 def onnx_response(tokenizer_path: str, checkpoint: str, device: str, max_ctx: int):
     tokenizer = Tokenizer(tokenizer_path)

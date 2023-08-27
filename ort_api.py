@@ -40,7 +40,7 @@ providers = ['CPUExecutionProvider']
 if args.device.strip().lower() in ['cuda', 'gpu'] and ort.get_device() == 'GPU':
     providers = ['CUDAExecutionProvider'] + providers
 
-model = ort.InferenceSession(args.model, providers=providers)
+session = ort.InferenceSession(args.model, providers=providers)
 
 # Load Tokenizer
 tokenizer = Tokenizer(args.tokenizer)
@@ -63,7 +63,7 @@ def hello(chat_message: ChatMessage):
 
     # Generate Tokens Stage
     for _ in range(args.max_ctx):
-        output = model.run(
+        output = session.run(
             None,
             {'input': digit}
         )[0]
