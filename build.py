@@ -1,4 +1,4 @@
-from trainer import GPTTrainer, activation_functions_dict
+from trainer import activation_functions_dict
 from gpt import GPT
 from preprocessing.data import Tokenizer
 import torch

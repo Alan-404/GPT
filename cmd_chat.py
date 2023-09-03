@@ -5,7 +5,6 @@ import re
 import numpy as np
 import onnxruntime as ort
 import time
-import pandas as pd
 
 def onnx_response(tokenizer_path: str, checkpoint: str, device: str, max_ctx: int):
     tokenizer = Tokenizer(tokenizer_path)
@@ -41,7 +40,31 @@ def onnx_response(tokenizer_path: str, checkpoint: str, device: str, max_ctx: in
             digits = np.concatenate((digits, np.expand_dims(pred_token, axis=0)), axis=-1)
         infer_end_time = time.time()
         
-        response = tokenizer.decode(digits[0][message_length:])
+        words = tokenizer.decode(digits[0][message_length:])
+        response = ""
+            
+        upper_flag = False
+        upper_all_flag = False
+        for word in words:
+            if word in tokenizer.special_tokens:
+                if word == "<upper>":
+                    upper_flag = True
+                elif word == "<upper_all>":
+                    upper_all_flag = True
+                elif word == "<new_line>":
+                    response += "\n"
+                continue
+            else:
+                if upper_flag:
+                    upper_flag = False
+                    response += str(word).capitalize()
+                elif upper_all_flag:
+                    upper_all_flag = False
+                    response += str(word).upper()
+                else:
+                    response += word
+
+        response = re.sub(tokenizer.word_break_icon, " ", response).capitalize()
         
         print(f"Response:\n{response}")
         print(f"Total inference time: {infer_end_time - infer_start_time}")
@@ -135,7 +158,7 @@ if __name__ == '__main__':
     parser.add_argument("--tokenizer_path", type=str)
     parser.add_argument("--checkpoint", type=str)
     parser.add_argument("--device",type=str, default='cpu')
-    parser.add_argument("--max_ctx", type=int, default=201)
+    parser.add_argument("--max_ctx", type=int, default=250)
     parser.add_argument("--model_type", default='trainer')
 
     args = parser.parse_args()

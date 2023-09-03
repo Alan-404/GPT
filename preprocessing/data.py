@@ -13,6 +13,8 @@ class Tokenizer:
         self.dictionary = []
         self.info = info_tokens
 
+        self.word_break_icon = "</w>"
+
         self.original_size = 0
         self.epoch = 0
 
@@ -79,7 +81,7 @@ class Tokenizer:
                 else:
                     for char in word:
                         temp.append(char)
-                    temp.append("</w>")
+                    temp.append(self.word_break_icon)
                 if tuple(temp) not in vocab_dict:
                     vocab_dict[tuple(temp)] = 1
                 else:
@@ -149,7 +151,7 @@ class Tokenizer:
     def find(self, word: str, special_token: bool = False):
         text = [*word]
         if special_token == False:
-            text += ["</w>"]
+            text += [self.word_break_icon]
         else:
             return [self.dictionary.index(word)]
         embedding = []
@@ -234,18 +236,14 @@ class Tokenizer:
     def decode(self, tokens: np.ndarray):
         text = []
         for token in tokens:
-            text.append(self.dictionary[token])
-
-        response = "".join(text)
-        response = re.sub("</w>", " ", response)
-        response = re.sub(" ai ", " AI ", response)
-        
-        for key in self.info:
-            response = re.sub(key, str(self.info[key]).capitalize(), response)
-        
-        response = re.sub(f"\s{self.cleaner.puncs}\s", r"\1 ", response)
-
-        return response.strip()
+            word = self.dictionary[token]
+            if word in self.info:
+                text.append(str(self.info[word]))
+            elif word == self.word_break_icon:
+                text.append(" ")
+            else:
+                text.append(self.dictionary[token])
+        return text
     
     def get_data(self, path: str) -> np.ndarray:
         with open(path, 'rb') as file:

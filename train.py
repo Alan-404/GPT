@@ -137,7 +137,7 @@ if __name__ == '__main__':
         args.activation = activation_functions_dict[str(params['activation'])]
         args.dropout_rate = float(params['dropout_rate'])
         args.eps = float(params['eps'])
-
+    
     train_model(
         data_path=args.data_path,
         tokenizer_path=args.tokenizer_path,

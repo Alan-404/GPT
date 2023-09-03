@@ -215,6 +215,7 @@ class GPTTrainer:
                 assert epochs >= num_folds
 
                 epochs = epochs // num_folds
+                
                 num_per_fold = math.ceil(data.size(0)/num_folds)
 
                 for fold in range(num_folds):

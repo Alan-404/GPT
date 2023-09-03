@@ -12,6 +12,52 @@ TRT_LOGGER = trt.Logger(trt.Logger.INFO)
 INPUT_PRECISION = np.int32
 OUTPUT_PRECISION = np.float32
 
+def load_engine(engine_path: str):
+    if os.path.exists(engine_path) == False:
+        print("Not Found Engine Path")
+        return None
+
+    
+    with open(engine_path, 'rb') as file:
+        engine_data = file.read()
+    
+    # Create Runtime and Engine
+    runtime = trt.Runtime(TRT_LOGGER)
+    engine = runtime.deserialize_cuda_engine(engine_data)
+
+    print("OK")
+    
+    return engine
+
+def allocate_buffer(max_ctx: int, token_size: int):
+    input_buffer = cuda.mem_alloc(max_ctx * np.dtype(INPUT_PRECISION).itemsize)
+    output_buffer = cuda.mem_alloc(max_ctx * token_size * np.dtype(OUTPUT_PRECISION).itemsize)
+    bindings = [int(input_buffer), int(output_buffer)]
+
+    return bindings
+
+def generate_text(context, bindings, digits: np.ndarray, max_ctx: int, end_token, token_size):
+    digits = digits.astype(INPUT_PRECISION)
+    for _ in range(max_ctx):
+        # Copy Data from CPU to GPU Buffer
+        cuda.memcpy_htod(bindings[0], digits)
+        # Setup Input Shape
+        context.set_input_shape(name=INPUT_NAME, shape=(1, digits.shape[-1]))
+        # Inference Stage
+        context.execute_v2(bindings=bindings)
+        # Get Data from GPU Buffer to CPU
+        output_data = np.empty(shape=(1, digits.shape[-1], token_size), dtype=OUTPUT_PRECISION)
+        cuda.memcpy_dtoh(output_data, bindings[1])
+        # Handle Predicted Token
+        pred_token = np.argmax(output_data[:, -1, :], axis=-1).astype(INPUT_PRECISION)
+
+        if pred_token[0] == end_token:
+            break
+
+        digits = np.concatenate((digits, np.expand_dims(pred_token, axis=0)), axis=-1)
+    return digits
+
+
 def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
     # Load Tokenizer
     if os.path.exists(tokenizer_path) == False:
@@ -20,27 +66,16 @@ def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
     end_token = tokenizer.get_special_token(END_TOKEN)
     
     # Load TensorRT Engine
-    if os.path.exists(engine_path) == False:
-        print("Not Found Engine Path")
-        return None
-
     load_start_time = time.time()
-    with open(engine_path, 'rb') as file:
-        engine_data = file.read()
-    
-    # Create Runtime and Engine
-    runtime = trt.Runtime(TRT_LOGGER)
-    engine = runtime.deserialize_cuda_engine(engine_data)
-    
+    engine = load_engine(engine_path)
+
     if engine is None:
         return None
 
     token_size = len(tokenizer.dictionary)
     
     # Allocate Buffer Memory in GPU
-    input_buffer = cuda.mem_alloc(max_ctx * np.dtype(INPUT_PRECISION).itemsize)
-    output_buffer = cuda.mem_alloc(max_ctx * token_size * np.dtype(OUTPUT_PRECISION).itemsize)
-    bindings = [int(input_buffer), int(output_buffer)]
+    bindings = allocate_buffer(max_ctx, token_size)
     
     # Create Engine Context
     context = engine.create_execution_context()
@@ -53,34 +88,49 @@ def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
         message = input("Input Message: ")
         # Pre-process Data
         digits = tokenizer.text_to_sequences([message], start_token=True, sep_token=True)
-        digits = digits.astype(INPUT_PRECISION)
+
         message_length = digits.shape[-1]
 
         try:
             infer_start_time = time.time()
             # Inference
-            for _ in range(max_ctx):
-                # Copy Data from CPU to GPU Buffer
-                cuda.memcpy_htod(bindings[0], digits)
-                # Setup Input Shape
-                context.set_input_shape(name=INPUT_NAME, shape=(1, digits.shape[-1]))
-                # Inference Stage
-                context.execute_v2(bindings=bindings)
-                # Get Data from GPU Buffer to CPU
-                output_data = np.zeros(shape=(1, digits.shape[-1], token_size), dtype=OUTPUT_PRECISION)
-                cuda.memcpy_dtoh(output_data, bindings[1])
-                # Handle Predicted Token
-                pred_token = np.argmax(output_data[:, -1, :], axis=-1).astype(INPUT_PRECISION)
-                if pred_token == end_token:
-                    break
-
-                digits = np.concatenate((digits, np.expand_dims(pred_token, axis=0)), axis=-1)
+            digits = generate_text(context, bindings, digits, max_ctx, end_token, token_size)
             infer_end_time = time.time()
+
             # Post-Process
-            response = tokenizer.decode(digits[0][message_length:])
-            response = re.sub("<new_line>", "\n", response)
-            response = response.title()
-        
+            words = tokenizer.decode(digits[0][message_length:])
+            response = ""
+            
+            upper_flag = False
+            upper_all_flag = False
+            for word in words:
+                if word in tokenizer.special_tokens:
+                    if word == "<upper>":
+                        upper_flag = True
+                    elif word == "<upper_all>":
+                        upper_all_flag = True
+                    elif word == "<new_line>":
+                        response += "\n"
+                        upper_flag = True
+                    elif word == "<circle_dot>":
+                        response += "| "
+                        upper_flag = True
+                    elif word == ".":
+                        upper_flag = True
+                    continue
+                else:
+                    if upper_flag:
+                        upper_flag = False
+                        response += str(word).capitalize()
+                    elif upper_all_flag:
+                        upper_all_flag = False
+                        response += re.sub(tokenizer.word_break_icon, " ", str(word)).upper()
+                    else:
+                        response += word
+
+            response = re.sub(tokenizer.word_break_icon, " ", response)
+            response = re.sub(f"\s{tokenizer.cleaner.puncs}\s", r'\1 ', response)
+            response = response[0].upper() + response[1:]
         except Exception as e:
             print(str(e))
             response = "BUG"
@@ -94,9 +144,7 @@ def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
 
         if exit:
             break
-    
-    input_buffer.free()
-    output_buffer.free()
+
 
 if __name__ == "__main__":
     from argparse import ArgumentParser

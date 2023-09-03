@@ -13,10 +13,9 @@ class GPT(nn.Module):
         self.classifier = nn.Linear(in_features=d_model, out_features=token_size)
 
     def forward(self, x: torch.Tensor):
+        mask = None
         if self.training:
             mask = generate_look_ahead_mask(x)
-        else:
-            mask = None
         x = self.embed(x)
         x = self.decoder(x, mask)
         x = self.norm_layer(x)
