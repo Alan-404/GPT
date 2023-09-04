@@ -53,12 +53,12 @@ class ChatMessage(BaseModel):
 
 # API
 @app.post("/chat")
-def hello(chat_message: ChatMessage):
+def hello(dto: ChatMessage):
     start_time = time.time()
-    request_text_length = len(chat_message.message.split(" "))
+    request_text_length = len(dto.message.split(" "))
 
     # Pre-Process Textual Data
-    digits = tokenizer.text_to_sequences([chat_message.message], start_token=True, sep_token=True)
+    digits = tokenizer.text_to_sequences([dto.message], start_token=True, sep_token=True)
     request_token_length = digits.shape[1]
     response_start_index = digits.shape[-1]
 

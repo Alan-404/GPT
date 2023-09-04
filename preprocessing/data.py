@@ -2,7 +2,6 @@ import re
 import pickle
 import os
 import numpy as np
-import dill
 
 class Tokenizer:
     def __init__(self, pretrained: str = None, special_tokens: list = [], info_tokens: dict = {}) -> None:
@@ -225,10 +224,6 @@ class Tokenizer:
             padded_data = self.pad_sequences(digits, max_length)
         return padded_data
     
-    def build(self, build_path: str):
-        with open(build_path, 'wb') as file:
-            dill.dump(self, file)
-    
     def save_data(self, data: np.ndarray, path: str) -> None:
         with open(path, 'wb') as file:
             pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
@@ -302,3 +297,9 @@ class TokenizerInfo:
     INFO_TOKENS = 'info_tokens'
     ORIGINAL_SIZE = 'original_size'
     EPOCH = 'epoch'
+
+if __name__ == '__main__':
+    tokenizer = Tokenizer('./tokenizer/v1/dictionary.pkl')
+
+    with open('./tokenizer.pkl', 'wb') as file:
+        pickle.dump(pickle.dumps(tokenizer, protocol=pickle.HIGHEST_PROTOCOL), file, protocol=pickle.HIGHEST_PROTOCOL)

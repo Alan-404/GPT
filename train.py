@@ -100,7 +100,7 @@ if __name__ == '__main__':
 
     # Tracking Config
     parser.add_argument("--tracking", type=bool, default=False)
-    parser.add_argument("--tracking_uri", type=str, default=None)
+    parser.add_argument("--tracking_uri", type=str, default="/home/alan/Src/Trackings")
     parser.add_argument("--experiment_name", type=str, default=None)
     parser.add_argument("--run_id", type=str, default=None)
     parser.add_argument("--run_name", type=str, default=None)

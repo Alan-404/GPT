@@ -16,10 +16,12 @@ def extract_dataset(dataset_path: str):
     default_data = io.open("./datasets/en_qa.txt", encoding='utf-8').read().strip().split('\n')
 
     dataset = []
-    for item in raw_dataset['data']:
-        for input in item['inputs']:
-            for output in item['outputs']:
-                dataset.append(f"{input} <sep> {output}")
+    text_samples = raw_dataset['data']
+    for language in text_samples.keys():
+        for sample in text_samples[language]:
+            for input_sample in sample['inputs']:
+                for output_sample in sample['outputs']:
+                    dataset.append(f"{input_sample} <sep> {output_sample}")
     
     special_tokens =  raw_dataset['action']
 
