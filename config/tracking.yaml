@@ -1,5 +1,4 @@
-mlflow_config:
-  tracking_uri: /home/alan/Src/Trackings/mlruns
-  experiment_name: GPT
-  run_name: Version 1
-  run_id: 
+tracking_uri: /home/alan/Src/Trackings/mlruns
+experiment_name: GPT
+run_name: Version 1
+run_id: 

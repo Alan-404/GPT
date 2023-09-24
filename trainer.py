@@ -6,14 +6,14 @@ from torchmetrics import Perplexity
 from typing import Callable
 from gpt import GPT
 import os
-from torch.utils.data import TensorDataset, DataLoader, Dataset
-import math
-from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader, Dataset
 import mlflow
 from tqdm import tqdm
 import pandas as pd
-import json
 from preprocessing.data import Tokenizer
+import numpy as np
+import yaml
+from yaml.loader import SafeLoader
 
 
 class GPTTrainer:
@@ -49,6 +49,8 @@ class GPTTrainer:
         self.cost = GPTLoss()
         self.metric = Perplexity(ignore_index=pad_value)
 
+        self.pad_value = pad_value
+
         # Training Config
         self.device = device
         self.model.to(self.device)
@@ -69,6 +71,8 @@ class GPTTrainer:
         # Load Checkpoint if having
         if self.checkpoint is not None:
             self.load_model(self.checkpoint)
+        else:
+            self.checkpoint = "./model.pt"
     
     def __save(self, path: str):
         torch.save({
@@ -99,12 +103,29 @@ class GPTTrainer:
         self.val_scores = checkpoint[ModelInfo.VAL_METRIC]
         checkpoint = None
 
+    def __load_config(self, path: str):
+        with open(path, 'r') as file:
+            return yaml.load(file, Loader=SafeLoader)
+
+    def load_config(self, path: str):
+        if os.path.exists(path):
+            return self.__load_config(path)
+        return None
+    
+    def __save_config(self, config: dict, path: str):
+        with open(path, 'w') as file:
+            yaml.dump(config, file, default_flow_style=False)
+
+    def save_config(self, config: dict, path: str):
+        if os.path.exists(path):
+            self.__save_config(config, path)
+
     def load_model(self, path: str, location: str = None):
         if os.path.exists(path):
             self.__load(path, location)
 
-    def build_dataset(self, tensor: torch.Tensor, batch_size: int):
-        return DataLoader(dataset=TensorDataset(tensor), batch_size=batch_size, shuffle=True)
+    def build_dataloader(self, dataset: Dataset, batch_size: int):
+        return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda batch: get_batch_with_padding(batch, self.pad_value))
     
     def train_step(self, inputs: torch.Tensor, labels: torch.Tensor):
         # Feed Forward
@@ -116,70 +137,124 @@ class GPTTrainer:
         loss.backward()
         self.optimizer.step()
 
-        # Calculate Metrical Score
-        _, preds = torch.max(outputs, dim=-1)
-        score = self.metric(preds, labels)
+        score = self.metric(outputs.cpu(), labels.cpu())
 
         self.loss += loss.item()
-        self.score += score
+        self.score += score.item()
 
-    def fit(self, train_dataset: Dataset, valid_dataset: Dataset = None, epochs: int = 1, batch_size: int = 1, epoch_save: int = None, tracking_config: dict = None):
+    def fit(self, train_dataset: Dataset, val_dataset: Dataset = None, epochs: int = 1, batch_size: int = 1, epoch_save: int = None, step_save: int = None, validation_config_path: str = None, tracking_config_path: str = None):
+        validation_config = None
+        if validation_config_path is not None:
+            validation_config = self.load_config(validation_config_path)
+
+        tracking_config = None
+        if tracking_config_path is not None:
+            tracking_config = self.load_config(tracking_config_path)
+        print(tracking_config)
+        
+        save_strategy = None
         if epoch_save is not None:
-            if epoch_save > epochs:
-                epoch_save = epochs
-        train_dataloader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
-        valid_dataloader = DataLoader(dataset=valid_dataset, batch_size=batch_size, shuffle=True)
-
+            save_strategy = "epoch"
+        elif step_save is not None:
+            save_strategy = "step"
+        
+        train_dataloader = self.build_dataloader(train_dataset, batch_size)
         num_batches = len(train_dataloader)
+        
+        num_save = 0
+        if save_strategy is not None:
+            if save_strategy == "step":
+                if step_save > num_batches:
+                    num_save = num_batches
+            elif save_strategy == "epoch":
+                if epoch_save > epochs:
+                    num_save = epochs
 
-        for _ in range(epochs):
-            print(f"======================{self.epoch + 1}======================")
-            for index, data in tqdm(enumerate(train_dataloader)):
-                inputs = data[0][:-1].to(self.device)
-                labels = data[0][1:].to(self.device)
+        if tracking_config is not None:
+            mlflow.set_tracking_uri(tracking_config['tracking_uri'])
+            if tracking_config['experiment_name'] is None:
+                tracking_config['experiment_name'] = 'GPT'
+            mlflow.set_experiment(tracking_config['experiment_name'])
+
+            if tracking_config['run_id'] is not None:
+                mlflow.start_run(run_id=tracking_config['run_id'])
+            else:
+                if tracking_config['run_name'] is None:
+                    tracking_config['run_name'] = "Version 1"
+                mlflow.start_run(run_name=tracking_config['run_name'])
+
+        self.model.train()
+        for epoch in range(epochs):
+            print(f"====================== Epoch {self.epoch + 1} ======================")
+            for index, data in enumerate(tqdm(train_dataloader)):
+                inputs = data[:, :-1].to(self.device)
+                labels = data[:, 1:].to(self.device)
 
                 self.train_step(inputs, labels)
-            
-            print(f"Epoch {self.epoch + 1}: Train Loss: {(self.loss/num_batches):.4f} Train Score: {(self.metric/num_batches):.4f}")
+                if save_strategy is not None and save_strategy == "step" and index%num_save == num_save+1:
+                    self.save_model(self.checkpoint)
 
+            train_loss = self.loss/num_batches
+            train_score = self.score/num_batches
+
+            print(f"Epoch {self.epoch + 1}: Train Loss: {(train_loss):.4f} Train Score: {(train_score):.4f}")
+            self.loss = 0.0
+            self.score = 0.0
+
+            if tracking_config is not None:
+                mlflow.log_metric(f"Train Loss", train_loss, self.epoch)
+                mlflow.log_metric(f"Train Score", train_score, self.epoch)
+
+            if val_dataset is not None:
+                val_batch_size = batch_size
+                if validation_config is not None and validation_config['batch_size'] is not None:
+                    val_batch_size = validation_config['batch_size']
+                val_loss, val_score = self.validate(val_dataset, batch_size=val_batch_size)
+                if tracking_config is not None:
+                    mlflow.log_metric(f"Validate Loss", val_loss, self.epoch)
+                    mlflow.log_metric(f"Validate Score", val_score, self.epoch)
+            
+            if save_strategy is not None and save_strategy == "epoch" and epoch%num_save == num_save + 1:
+                self.save_model(self.checkpoint)
+            
+            print(f"====================== Done Epoch {self.epoch + 1} ======================\n")
+            self.epoch += 1
+        
+        print(f"====================== Done Training ======================")
+        
+        
+        self.save_model(self.checkpoint)
+        print(f"Model is saved at {self.checkpoint}")
+
+        if tracking_config_path is not None and tracking_config is not None and tracking_config['run_id'] is None:
+            tracking_config['run_id'] = mlflow.active_run().info.run_id()
+            self.save_config(tracking_config, tracking_config_path)
     
     def validate_step(self, inputs: torch.Tensor, labels: torch.Tensor):
         outputs = self.model(inputs)
 
-        loss = self.cost(outputs, labels).item()
-
-        _, preds = torch.max(outputs, dim=-1)
-        score = self.metric(preds, labels)
+        loss = self.cost(outputs, labels)
+        score = self.metric(outputs, labels)
 
         return loss, score
-        
-    def validate(self, dataloader: DataLoader, tracking: bool = False):
-        total_batches = len(dataloader)
-        total_loss = 0.0
-        total_score = 0.0
-        for _, data in enumerate(dataloader, 0):
-            inputs = data[0][:, :-1].to(self.device)
-            labels = data[0][:, 1:].to(self.device)
+    
+    def validate(self, val_dataset: Dataset, batch_size: int):
+        val_dataloader = self.build_dataloader(val_dataset, batch_size=batch_size)
+        loss = 0.0
+        score = 0.0
+        num_batches = len(val_dataloader)
+        print(f"================ Validate at Epoch {self.epoch+1} ================")
+        for index, data in enumerate(tqdm(val_dataloader)):
+            inputs = data[:, :-1].to(self.device)
+            labels = data[:, 1:].to(self.device)
+            batch_loss, batch_score = self.validate_step(inputs, labels)
 
-            loss, score = self.validate_step(inputs, labels)
-            total_loss += loss
-            total_score += score
-        
-        if self.model.training:
-            print(f"Epoch: {self.epoch+1} Validation Loss: {(total_loss/total_batches):.4f} Validation Score: {(total_score/total_batches):.4f}")
-            self.val_losses.append(total_loss/total_batches)
-            self.val_scores.append(total_score/total_batches)
-
-            if tracking:
-                mlflow.log_metric("Validation Loss", total_loss/total_batches, step=self.epoch)
-                mlflow.log_metric("Validation BLEU Score", total_score/total_batches, step=self.epoch)
-        else:
-            print(f"Evaluation Result: Loss: {(total_loss/total_batches):.4f} Score: {(total_score/total_batches):.4f}")
-            if tracking:
-                mlflow.log_metric("Test Loss", total_loss/total_batches, step=self.epoch)
-                mlflow.log_metric("Test Score", total_score/total_batches, step=self.epoch)
-        
-
+            loss += batch_loss
+            score += batch_score
+        print(f"================ Done Validate at Epoch {self.epoch+1} ================")
+        return loss/num_batches, score/num_batches
+    
+    
     def evaluate(self, data: torch.Tensor, batch_size: int = 1):
         self.model.eval()
         dataloader = self.build_dataset(data, batch_size=batch_size)
@@ -227,6 +302,12 @@ class GPTLoss(nn.Module):
 
         return loss
 
+def get_batch_with_padding(batch ,padding_value: int = 0):
+    max_length = np.max([len(item) for item in batch])
+    data = []
+    for item in batch:
+        data.append(np.pad(item, (0, max_length-len(item)), constant_values=padding_value))
+    return torch.tensor(np.array(data))
 
 activation_functions_dict = {
     "gelu": F.gelu,

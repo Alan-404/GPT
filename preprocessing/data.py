@@ -2,6 +2,7 @@ import re
 import pickle
 import os
 import numpy as np
+from tqdm import tqdm
 
 class Tokenizer:
     def __init__(self, pretrained: str = None, special_tokens: list = [], info_tokens: dict = {}) -> None:
@@ -121,7 +122,7 @@ class Tokenizer:
             self.dictionary = self.create_dictionary(self.vocab_dict)
         print(f"Original Dictionary Size: {self.original_size}")
         print("========== Training Tokenizer ============")
-        for _ in range(max_iterations):
+        for _ in tqdm(range(max_iterations)):
             pairs = self.create_pair(self.vocab_dict)
             max_item = max(pairs, key=lambda k: pairs[k])
             temp_dict = dict()
@@ -147,10 +148,11 @@ class Tokenizer:
             
             self.vocab_dict = temp_dict
             self.dictionary = self.create_dictionary(self.vocab_dict)
-            print(f"Epoch {self.epoch+1} Dictionary Size: {len(self.dictionary)}")
+
             self.epoch += 1
             if len(self.dictionary) >= int(self.original_size/sigma) and len(self.dictionary) < self.original_size:
                 break
+        print(f"Epoch {self.epoch+1} Dictionary Size: {len(self.dictionary)}")
     
     def find(self, word: str, special_token: bool = False):
         text = [*word]
@@ -239,22 +241,18 @@ class Tokenizer:
         sequence = self.replacer.replace(sequence)
 
         words = sequence.split(" ")
-        temp = []
         if start_token:
-            temp += [self.get_special_token("start")]
+            digits += [self.get_special_token("start")]
         for word in words:
             special_token = word in self.special_tokens
             digit_word = self.find(word, special_token)
-            temp += digit_word
+            digits += digit_word
         if sep_token:
-            temp += [self.get_special_token("sep")]
+            digits += [self.get_special_token("sep")]
         elif end_token:
-            temp += [self.get_special_token("end")]
-        if maxlen < len(temp):
-            maxlen = len(temp)
-        digits.append(np.array(temp))
-        
-        return digits
+            digits += [self.get_special_token("end")]
+
+        return np.array(digits)
     
     def save_data(self, data: np.ndarray, path: str) -> None:
         with open(path, 'wb') as file:
