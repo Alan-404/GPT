@@ -6,11 +6,14 @@ from torchmetrics import Perplexity
 from typing import Callable
 from gpt import GPT
 import os
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import TensorDataset, DataLoader, Dataset
 import math
 from sklearn.model_selection import train_test_split
 import mlflow
 from tqdm import tqdm
+import pandas as pd
+import json
+from preprocessing.data import Tokenizer
 
 
 class GPTTrainer:
@@ -120,128 +123,25 @@ class GPTTrainer:
         self.loss += loss.item()
         self.score += score
 
-    def train(self, dataloader: DataLoader, epochs: int, mini_batch: int, val_dataloader: DataLoader = None, tracking: bool = False):
-        # Beginning Config
-        total_batches = len(dataloader)
-        batch_loss = 0.0
-        batch_score = 0.0
+    def fit(self, train_dataset: Dataset, valid_dataset: Dataset = None, epochs: int = 1, batch_size: int = 1, epoch_save: int = None, tracking_config: dict = None):
+        if epoch_save is not None:
+            if epoch_save > epochs:
+                epoch_save = epochs
+        train_dataloader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+        valid_dataloader = DataLoader(dataset=valid_dataset, batch_size=batch_size, shuffle=True)
 
-        epoch_loss = 0.0
-        epoch_score = 0.0
-        # Start Tranining
+        num_batches = len(train_dataloader)
+
         for _ in range(epochs):
-            count = 0
-            # Handle per epoch
-            for index, data in enumerate(dataloader, 0):
-                # Get Input and Corresponding Label
-                inputs = data[0][:, :-1].to(self.device)
-                labels = data[0][:, 1:].to(self.device)
-                # Train in Batch
-                loss, score = self.train_step(inputs, labels)
-                batch_loss += loss
-                batch_score += score
-                count += 1
-                # Statistical
-                if index%mini_batch == mini_batch-1 or index == total_batches-1:
-                    print(f"Epoch: {(self.epoch+1)} Batch: {index + 1} Loss: {(batch_loss/count):.4f} Score: {(batch_score/count):.4f}")
+            print(f"======================{self.epoch + 1}======================")
+            for index, data in tqdm(enumerate(train_dataloader)):
+                inputs = data[0][:-1].to(self.device)
+                labels = data[0][1:].to(self.device)
 
-                    epoch_loss += batch_loss
-                    epoch_score += batch_score
-
-                    batch_loss = 0.0
-                    batch_score = 0.0
-                    count = 0
-            # Finish an Epoch
-            print(f"Epoch: {self.epoch+1} Train Loss: {(epoch_loss/total_batches):.4f} Train Score: {(epoch_score/total_batches):.4f}")
-            self.losses.append(epoch_loss/total_batches)
-            self.scores.append(epoch_score/total_batches)
-
-            if tracking:
-                mlflow.log_metric("Train Loss", epoch_loss/total_batches, step=self.epoch)
-                mlflow.log_metric("Train BLEU Score", epoch_score/total_batches, step=self.epoch)
-
-            if val_dataloader is not None:
-                self.validate(val_dataloader)
+                self.train_step(inputs, labels)
             
-            epoch_loss = 0.0
-            epoch_score = 0.0
-            self.epoch += 1
+            print(f"Epoch {self.epoch + 1}: Train Loss: {(self.loss/num_batches):.4f} Train Score: {(self.metric/num_batches):.4f}")
 
-            
-            # Step Scheduler to change learning rate
-            # self.scheduler.step()
-
-    def fit(self, data: torch.Tensor, epochs: int = 1, batch_size: int = 1, mini_batch: int = 1, **validation):
-        tracking = False
-        if 'tracking' in validation and validation['tracking'] == True:
-            tracking = True
-            if 'tracking_uri' in validation and validation['tracking_uri'] is not None:
-                mlflow.set_tracking_uri(validation['tracking_uri'])
-            
-            if 'experiment_name' in validation and validation['experiment_name'] is not None:
-                mlflow.set_experiment(validation['experiment_name'])
-            else:
-                mlflow.set_experiment("GPT Model")
-            
-            if "run_id" in validation and validation['run_id'] is not None:
-                mlflow.start_run(validation['run_id'])
-            elif 'run_name' in validation and validation['run_name'] is not None:
-                mlflow.start_run(run_name=validation['run_name'])
-            else:
-                mlflow.start_run(run_name="Version 1")
-
-        # Set model in Training mode
-        self.model.train()
-
-        use_validate = len(validation.keys()) != 0 and 'val_type' in validation and validation['val_type'] is not None
-        # Validation
-        if use_validate:
-            if validation['val_type'] == 'holdout':
-                test_size = 0.2
-                if 'val_size' in validation and type(validation['val_size']) == 'float':
-                    test_size = validation['val_size']
-                # Split data into 2 parts
-                train_set, val_set = train_test_split(data, test_size=test_size, random_state=41)
-                # Train and Validate
-                train_dataloader = self.build_dataset(train_set, batch_size=batch_size)
-                val_dataloader = self.build_dataset(val_set, batch_size=batch_size)
-
-                self.train(train_dataloader, epochs=epochs, mini_batch=mini_batch, val_dataloader=val_dataloader, tracking=tracking)
-            elif validation['val_type'] == 'kfold':
-                num_folds = 1
-                if 'num_folds' in validation and type(validation['num_folds'] == 'int'):
-                    num_folds = validation['num_folds']
-                assert epochs >= num_folds
-
-                epochs = epochs // num_folds
-                
-                num_per_fold = math.ceil(data.size(0)/num_folds)
-
-                for fold in range(num_folds):
-                    val_start_idx = fold * num_per_fold
-                    val_end_idx = (fold + 1) * num_per_fold
-
-                    val_set = data[val_start_idx:val_end_idx, :]
-                    train_set = torch.cat((data[0:val_start_idx, :], data[val_end_idx:, :]), dim=0)
-
-
-                    train_dataloader = self.build_dataset(train_set, batch_size=batch_size)
-                    val_dataloader = self.build_dataset(val_set, batch_size=batch_size)
-                    self.train(train_dataloader, epochs=epochs, mini_batch=mini_batch, val_dataloader=val_dataloader, tracking=tracking)
-        # No Validation
-        else:
-            dataloader = self.build_dataset(data, batch_size=batch_size)
-            self.train(dataloader, epochs=epochs, mini_batch=mini_batch, tracking=tracking)
-
-        # Save Checkpoint
-        if self.checkpoint is not None:
-            self.save_model(self.checkpoint)
-        else:
-            self.save_model("./model.pt")
-
-        if tracking:
-            mlflow.pytorch.log_model(self.model, "model")
-    
     
     def validate_step(self, inputs: torch.Tensor, labels: torch.Tensor):
         outputs = self.model(inputs)
@@ -249,7 +149,7 @@ class GPTTrainer:
         loss = self.cost(outputs, labels).item()
 
         _, preds = torch.max(outputs, dim=-1)
-        score = self.metric.bleu_score(preds, labels)
+        score = self.metric(preds, labels)
 
         return loss, score
         
@@ -299,9 +199,23 @@ class GPTTrainer:
         return text
 
 
+class GPTDataset(Dataset):
+    def __init__(self, manifest_path: str, tokenizer: Tokenizer) -> None:
+        super().__init__()
+        self.prompts = pd.read_csv(manifest_path, sep="\t")
+
+        self.tokenizer = tokenizer
+
+    def __len__(self):
+        return len(self.prompts)
+    
+    def __getitem__(self, index: int):
+        digits = self.tokenizer.text2sequence(self.prompts.loc[index]['input'], self.prompts.loc[index]['output'])
+        return digits
+
 class GPTLoss(nn.Module):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self) -> None:
+        super().__init__()
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, outputs: torch.Tensor, labels: torch.Tensor):

@@ -31,7 +31,7 @@ class Tokenizer:
 
         return self.dictionary.index(name)
     
-    def save_tokenizer(self, path: str):
+    def __save_tokenzier(self, path: str):
         obj = {
             TokenizerInfo.DICTIONARY: self.dictionary,
             TokenizerInfo.VOCABULARY: self.vocab_dict,
@@ -42,6 +42,14 @@ class Tokenizer:
         }
         with open(path, 'wb') as file:
             pickle.dump(obj, file, protocol=pickle.HIGHEST_PROTOCOL)
+    
+    def save_tokenizer(self, path: str):
+        try:
+            self.__save_tokenzier(path)
+        except Exception as e:
+            print(str(e))
+            print("Tokenizer is saved at root project.")
+            self.__save_tokenzier("./tokenizer.pkl")
 
     def load_tokenizer(self, path: str):
         if os.path.exists(path):
@@ -70,7 +78,7 @@ class Tokenizer:
         for seq in data:
             seq = self.cleaner.clean(seq)
             seq = self.replacer.replace(seq)
-            words = seq.split(" ")
+            words = str(seq).split(" ")
             for word in words:
                 if word not in dictionary:
                     dictionary.append(word)
@@ -85,7 +93,6 @@ class Tokenizer:
                     vocab_dict[tuple(temp)] = 1
                 else:
                     vocab_dict[tuple(temp)] += 1
-
         return vocab_dict, len(dictionary)
     
     def create_dictionary(self, dictionary: dict):
@@ -144,8 +151,6 @@ class Tokenizer:
             self.epoch += 1
             if len(self.dictionary) >= int(self.original_size/sigma) and len(self.dictionary) < self.original_size:
                 break
-        if self.pretrained is not None:
-            self.save_tokenizer(self.pretrained)
     
     def find(self, word: str, special_token: bool = False):
         text = [*word]
@@ -196,7 +201,7 @@ class Tokenizer:
             result.append(sequence)
         
         return np.array(result)
-
+    
     def text_to_sequences(self, data: list, max_length: int = None, start_token: bool = False, end_token: bool = False, sep_token: bool = False):
         digits = []
         maxlen = 0
@@ -223,6 +228,33 @@ class Tokenizer:
         else:
             padded_data = self.pad_sequences(digits, max_length)
         return padded_data
+    
+    def text2sequence(self, input_sample: str, output_sample: str):
+        return self.text2digit(f"{input_sample} <sep> {output_sample}", start_token=True, end_token=True)
+        
+
+    def text2digit(self, sequence: str, start_token: bool = False, sep_token: bool = False, end_token: bool = False):
+        digits = []
+        sequence = self.cleaner.clean(sequence)
+        sequence = self.replacer.replace(sequence)
+
+        words = sequence.split(" ")
+        temp = []
+        if start_token:
+            temp += [self.get_special_token("start")]
+        for word in words:
+            special_token = word in self.special_tokens
+            digit_word = self.find(word, special_token)
+            temp += digit_word
+        if sep_token:
+            temp += [self.get_special_token("sep")]
+        elif end_token:
+            temp += [self.get_special_token("end")]
+        if maxlen < len(temp):
+            maxlen = len(temp)
+        digits.append(np.array(temp))
+        
+        return digits
     
     def save_data(self, data: np.ndarray, path: str) -> None:
         with open(path, 'wb') as file:
