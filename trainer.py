@@ -2,15 +2,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from torchmetrics import Perplexity
 from typing import Callable
 from gpt import GPT
 import os
-from eval.metric import GPTMetric
 from torch.utils.data import TensorDataset, DataLoader
-from eval.loss import GPTLoss
 import math
 from sklearn.model_selection import train_test_split
 import mlflow
+from tqdm import tqdm
+
 
 class GPTTrainer:
     def __init__(self,
@@ -23,6 +24,7 @@ class GPTTrainer:
                  dropout_rate: float = 0.1,
                  eps: float = 0.02,
                  device: str = 'cpu',
+                 pad_value: int = 0,
                  learning_rate: float = 3e-5,
                  checkpoint: str = None) -> None:
         # Setup Model
@@ -39,17 +41,20 @@ class GPTTrainer:
 
         # Setup Optimizer and its Scheduler
         self.optimizer = optim.Adam(params=self.model.parameters(), lr=learning_rate)
-        # self.scheduler = lr_scheduler.StepLR(self.optimizer, step_size=5, gamma=0.1)
 
         # Declare Loss Function and Metric Function
         self.cost = GPTLoss()
-        self.metric = GPTMetric()
+        self.metric = Perplexity(ignore_index=pad_value)
 
         # Training Config
         self.device = device
         self.model.to(self.device)
         self.checkpoint = checkpoint
         self.epoch = 0
+
+        # Loss and Score Statistical
+        self.loss = 0.0
+        self.score = 0.0
         
         # Loss and Score History in Train Set and Validation Set
         self.losses = []
@@ -62,45 +67,38 @@ class GPTTrainer:
         if self.checkpoint is not None:
             self.load_model(self.checkpoint)
     
+    def __save(self, path: str):
+        torch.save({
+            ModelInfo.MODEL_STATE_DICT: self.model.state_dict(),
+            ModelInfo.OPTIMIZER_STATE_DICT: self.optimizer.state_dict(),
+            ModelInfo.EPOCH: self.epoch,
+            ModelInfo.LOSS: self.losses,
+            ModelInfo.METRIC: self.scores,
+            ModelInfo.VAL_LOSS: self.val_losses,
+            ModelInfo.VAL_METRIC: self.val_scores
+        }, path)
+    
     def save_model(self, path: str):
         try:
-            torch.save({
-                ModelInfo.MODEL_STATE_DICT: self.model.state_dict(),
-                ModelInfo.OPTIMIZER_STATE_DICT: self.optimizer.state_dict(),
-                # ModelInfo.SCHEDULER_STATE_DICT: self.scheduler.state_dict(),
-                ModelInfo.EPOCH: self.epoch,
-                ModelInfo.LOSS: self.losses,
-                ModelInfo.METRIC: self.scores,
-                ModelInfo.VAL_LOSS: self.val_losses,
-                ModelInfo.VAL_METRIC: self.val_scores
-            }, path)
+            self.__save(path)
         except:
             print("Folder is not Found")
-            torch.save({
-                ModelInfo.MODEL_STATE_DICT: self.model.state_dict(),
-                ModelInfo.OPTIMIZER_STATE_DICT: self.optimizer.state_dict(),
-                # ModelInfo.SCHEDULER_STATE_DICT: self.scheduler.state_dict(),
-                ModelInfo.EPOCH: self.epoch,
-                ModelInfo.LOSS: self.losses,
-                ModelInfo.METRIC: self.scores,
-                ModelInfo.VAL_LOSS: self.val_losses,
-                ModelInfo.VAL_METRIC: self.val_scores
-            }, './model.pt')
+            self.__save("./model.pt")
+
+    def __load(self, path: str, location: str):
+        checkpoint = torch.load(path, location)
+        self.model.load_state_dict(checkpoint[ModelInfo.MODEL_STATE_DICT])
+        self.optimizer.load_state_dict(checkpoint[ModelInfo.OPTIMIZER_STATE_DICT])
+        self.epoch = checkpoint[ModelInfo.EPOCH]
+        self.losses = checkpoint[ModelInfo.LOSS]
+        self.scores = checkpoint[ModelInfo.METRIC]
+        self.val_losses = checkpoint[ModelInfo.VAL_LOSS]
+        self.val_scores = checkpoint[ModelInfo.VAL_METRIC]
+        checkpoint = None
 
     def load_model(self, path: str, location: str = None):
         if os.path.exists(path):
-            checkpoint = torch.load(path, location)
-
-            self.model.load_state_dict(checkpoint[ModelInfo.MODEL_STATE_DICT])
-            self.optimizer.load_state_dict(checkpoint[ModelInfo.OPTIMIZER_STATE_DICT])
-            # self.scheduler.load_state_dict(checkpoint[ModelInfo.SCHEDULER_STATE_DICT])
-            self.epoch = checkpoint[ModelInfo.EPOCH]
-            self.losses = checkpoint[ModelInfo.LOSS]
-            self.scores = checkpoint[ModelInfo.METRIC]
-            self.val_losses = checkpoint[ModelInfo.VAL_LOSS]
-            self.val_scores = checkpoint[ModelInfo.VAL_METRIC]
-
-            checkpoint = None
+            self.__load(path, location)
 
     def build_dataset(self, tensor: torch.Tensor, batch_size: int):
         return DataLoader(dataset=TensorDataset(tensor), batch_size=batch_size, shuffle=True)
@@ -117,9 +115,10 @@ class GPTTrainer:
 
         # Calculate Metrical Score
         _, preds = torch.max(outputs, dim=-1)
-        score = self.metric.bleu_score(preds, labels)
+        score = self.metric(preds, labels)
 
-        return loss.item(), score
+        self.loss += loss.item()
+        self.score += score
 
     def train(self, dataloader: DataLoader, epochs: int, mini_batch: int, val_dataloader: DataLoader = None, tracking: bool = False):
         # Beginning Config
@@ -298,6 +297,22 @@ class GPTTrainer:
 
             text = torch.cat((text, pred.unsqueeze(0)), dim=-1)
         return text
+
+
+class GPTLoss(nn.Module):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.criterion = nn.CrossEntropyLoss()
+
+    def forward(self, outputs: torch.Tensor, labels: torch.Tensor):
+        batch_size = labels.size(0)
+        loss = 0.0
+        for batch in range(batch_size):
+            loss += self.criterion(outputs[batch], labels[batch])
+        loss = loss / batch_size
+
+        return loss
+
 
 activation_functions_dict = {
     "gelu": F.gelu,
