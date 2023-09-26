@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 import mlflow
 from tqdm import tqdm
 import pandas as pd
-from preprocessing.data import Tokenizer
+from preprocessing.tokenizer import Tokenizer
 import numpy as np
 import yaml
 from yaml.loader import SafeLoader
@@ -226,9 +226,12 @@ class GPTTrainer:
         self.save_model(self.checkpoint)
         print(f"Model is saved at {self.checkpoint}")
 
-        if tracking_config_path is not None and tracking_config is not None and tracking_config['run_id'] is None:
-            tracking_config['run_id'] = mlflow.active_run().info.run_id()
-            self.save_config(tracking_config, tracking_config_path)
+        if tracking_config_path is not None:
+            mlflow.pytorch.log_state_dict(self.model.state_dict(), artifact_path="model_state_dict")
+            mlflow.pytorch.log_state_dict(self.optimizer.state_dict(), artifact_path="optimizer_state_dict")
+            if tracking_config is not None and tracking_config['run_id'] is None:
+                tracking_config['run_id'] = mlflow.active_run().info.run_id()
+                self.save_config(tracking_config, tracking_config_path)
     
     def validate_step(self, inputs: torch.Tensor, labels: torch.Tensor):
         outputs = self.model(inputs)
