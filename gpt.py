@@ -7,7 +7,7 @@ import numpy as np
 class GPT(nn.Module):
     def __init__(self, token_size: int, n: int, d_model: int, heads: int, d_ff: int, activation: Callable[[torch.Tensor], torch.Tensor], dropout_rate: float, eps: float) -> None:
         super().__init__()
-        self.embed = TextAndEmbed(token_size, d_model)
+        self.embed = TextAndEmbed(token_size, d_model, dropout_rate)
         self.decoder = Decoder(n, d_model, heads, d_ff, activation, dropout_rate, eps)
         self.norm_layer = nn.LayerNorm(normalized_shape=d_model, eps=eps)
         self.classifier = nn.Linear(in_features=d_model, out_features=token_size)
@@ -26,20 +26,21 @@ class Decoder(nn.Module):
     def __init__(self, n: int, d_model: int, heads: int, d_ff: int, activation: Callable[[torch.Tensor], torch.Tensor], dropout_rate: float, eps: float) -> None:
         super().__init__()
         self.layers = nn.ModuleList([DecoderLayer(d_model, heads, d_ff, activation, dropout_rate, eps) for _ in range(n)])
-        self.dropout_rate = dropout_rate
     def forward(self, x: torch.Tensor, mask: Union[torch.Tensor, None]) -> torch.Tensor:
         for layer in self.layers:
             x = layer(x, mask)
         return x
     
 class TextAndEmbed(nn.Module):
-    def __init__(self, token_size: int, d_model: int) -> None:
+    def __init__(self, token_size: int, d_model: int, dropout_rate: float = 0.0) -> None:
         super().__init__()
         self.embedding_layer = nn.Embedding(num_embeddings=token_size, embedding_dim=d_model)
+        self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.positional_encoder = PositionalEncoding()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.embedding_layer(x)
+        x = self.dropout_layer(x)
         x = self.positional_encoder(x)
         return x
 
@@ -101,6 +102,7 @@ class MultiHeadAttention(nn.Module):
         attention_context = attention_context.reshape((batch_size, n_ctx, self.d_model))
 
         attention_context = self.linear_output(attention_context)
+        attention_context = F.dropout(attention_context, p=self.dropout_rate, training=self.training)
         return attention_context
 
 class PositonWiseFeedForwardNetworks(nn.Module):

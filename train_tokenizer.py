@@ -1,10 +1,15 @@
 from preprocessing.tokenizer import Tokenizer
 import json
+import pandas as pd
 
 ENCODING_FORMAT = 'utf-8'
 
 def train(tokenizer_path: str, data_path: str, token_path: str, saved_tokenizer: str = None):
     assert ".json" in token_path, "Token Path is a JSON file"
+
+    df = pd.read_csv(data_path, sep="\t")
+    print(df)
+    data = df['input'] + df['output']
 
     token_item = json.load(open(token_path, encoding=ENCODING_FORMAT))
 
@@ -15,7 +20,7 @@ def train(tokenizer_path: str, data_path: str, token_path: str, saved_tokenizer:
             max_iteration_input = input("Input max iteration in training tokenizer: ")
             sigma_input = input("Input Sigma: ")
 
-            tokenizer.fit(file_path=data_path, max_iterations=int(max_iteration_input) ,sigma=float(sigma_input))
+            tokenizer.fit(data=data, max_iterations=int(max_iteration_input) ,sigma=float(sigma_input))
 
             exit_cmd = input('Do you want to save Tokenizer? (y/n): ').lower().strip()
 

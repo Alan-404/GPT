@@ -25,6 +25,11 @@ class Tokenizer:
             self.special_tokens = init_tokens + special_tokens
             for key in info_tokens.keys():
                 self.special_tokens.append(key)
+        
+        if len(self.dictionary) != 0:
+            print(f"Current Dictionary Size: {len(self.dictionary)}")
+        else:
+            print(f"Haven't Trained Before")
 
     def get_special_token(self, name: str):
         name = f"<{name}>"
@@ -117,11 +122,14 @@ class Tokenizer:
         return pair
 
     def fit(self, data: list, max_iterations: int = 10, sigma: float = 2.0):
+        print("========== Train Tokenizer ==========")
         if self.original_size == 0 and len(self.dictionary) == 0:
             self.vocab_dict, self.original_size = self.init_vocab_dict(data)
             self.dictionary = self.create_dictionary(self.vocab_dict)
         print(f"Original Dictionary Size: {self.original_size}")
-        print("========== Training Tokenizer ============")
+        print(f"Current Dictionary Size: {len(self.dictionary)}")
+        print("========== Start Training Tokenizer ============")
+        print("\n")
         for _ in tqdm(range(max_iterations)):
             pairs = self.create_pair(self.vocab_dict)
             max_item = max(pairs, key=lambda k: pairs[k])
@@ -269,6 +277,16 @@ class Tokenizer:
             else:
                 text.append(self.dictionary[token])
         return text
+    
+    def decode_to_sequence(self, tokens: np.ndarray, hot_words: dict = {}):
+        word_tokens = self.decode(tokens)
+        sequence = re.sub("</w>", " ", "".join(word_tokens))
+        if len(hot_words):
+            for hot_word in hot_words.keys():
+                sequence = re.sub(hot_word, hot_words[hot_word], sequence)
+        sequence = re.sub(f"\s{self.cleaner.puncs}\s", r"\1 ", sequence)
+        sequence = sequence[0].upper() + sequence[1:]
+        return sequence
     
     def get_data(self, path: str) -> np.ndarray:
         with open(path, 'rb') as file:

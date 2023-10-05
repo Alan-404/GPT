@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 import onnxruntime as ort
 import uvicorn
-from preprocessing.data import Tokenizer
+from preprocessing.tokenizer import Tokenizer
 from argparse import ArgumentParser
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,6 +9,7 @@ import numpy as np
 import time
 import os
 import re
+import json
 
 # Get Information about Server
 parser = ArgumentParser()
@@ -21,7 +22,7 @@ parser.add_argument("--device", type=str, default='cpu')
 
 args = parser.parse_args()
 
-assert os.path.exists(args.model) == True and os.path.exists(args.tokenizer)
+assert os.path.exists(args.model) == True and os.path.exists(args.tokenizer) == True
 
 # Config App and APIs
 app = FastAPI()
@@ -51,6 +52,9 @@ end_token = tokenizer.get_special_token("end")
 class ChatMessage(BaseModel):
     message: str
 
+def load_json_file(path: str):
+    return json.load(open(path, encoding='utf-8'))
+
 # API
 @app.post("/chat")
 def hello(dto: ChatMessage):
@@ -79,39 +83,7 @@ def hello(dto: ChatMessage):
     response_token_length = len(digits)
     
     # Post-Process Data
-    words = tokenizer.decode(digits)
-    response = ""
-
-    upper_flag = False
-    upper_all_flag = False
-    for word in words:
-        if word in tokenizer.special_tokens:
-            if word == "<upper>":
-                upper_flag = True
-            elif word == "<upper_all>":
-                upper_all_flag = True
-            elif word == "<new_line>":
-                response += "\n"
-                upper_flag = True
-            elif word == "<circle_dot>":
-                response += "| "
-                upper_flag = True
-            elif word == ".":
-                upper_flag = True
-            continue
-        else:
-            if upper_flag:
-                upper_flag = False
-                response += str(word).capitalize()
-            elif upper_all_flag:
-                upper_all_flag = False
-                response += re.sub(tokenizer.word_break_icon, " ", str(word)).upper()
-            else:
-                response += word
-
-    response = re.sub(tokenizer.word_break_icon, " ", response)
-    response = re.sub(f"\s{tokenizer.cleaner.puncs}\s", r'\1 ', response)
-    response = response[0].upper() + response[1:]
+    response = tokenizer.decode_to_sequence(digits, hot_words=load_json_file("./config/hot_word.json"))
     response_text_length = len(response.split(" "))
     end_time = time.time()
 

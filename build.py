@@ -1,6 +1,6 @@
 from trainer import activation_functions_dict
 from gpt import GPT
-from preprocessing.data import Tokenizer
+from preprocessing.tokenizer import Tokenizer
 import torch
 from typing import Callable
 import os

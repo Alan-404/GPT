@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 import tensorrt as trt
 import numpy as np
-from preprocessing.data import Tokenizer
+from preprocessing.tokenizer import Tokenizer
 import os
 import pycuda.driver as cuda
 import pycuda.autoinit
@@ -16,7 +16,7 @@ END_TOKEN = "end"
 TRT_LOGGER = trt.Logger(trt.Logger.INFO)
 INPUT_PRECISION = np.int32
 OUTPUT_PRECISION = np.float32
-tokenizer = Tokenizer("./tokenizer/v1/dictionary.pkl")
+tokenizer = Tokenizer("./tokenizers/tokenizer.pkl")
 max_ctx = 250
 end_token = tokenizer.get_special_token("end")
 token_size = len(tokenizer.dictionary)

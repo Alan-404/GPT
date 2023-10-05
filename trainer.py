@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torchmetrics import Perplexity
+import torchmetrics
 from typing import Callable
 from gpt import GPT
 import os
@@ -28,7 +28,7 @@ class GPTTrainer:
                  eps: float = 0.02,
                  device: str = 'cpu',
                  pad_value: int = 0,
-                 learning_rate: float = 3e-5,
+                 init_learning_rate: float = 3e-5,
                  checkpoint: str = None) -> None:
         # Setup Model
         self.model = GPT(
@@ -43,11 +43,11 @@ class GPTTrainer:
         )
 
         # Setup Optimizer and its Scheduler
-        self.optimizer = optim.Adam(params=self.model.parameters(), lr=learning_rate)
+        self.optimizer = optim.Adam(params=self.model.parameters(), lr=init_learning_rate)
 
         # Declare Loss Function and Metric Function
         self.cost = GPTLoss()
-        self.metric = Perplexity(ignore_index=pad_value)
+        self.metric = GPTMetric()
 
         self.pad_value = pad_value
 
@@ -59,7 +59,10 @@ class GPTTrainer:
 
         # Loss and Score Statistical
         self.loss = 0.0
-        self.score = 0.0
+        self.score = {
+            MetricInfo.BLEU_SCORE: 0.0,
+            MetricInfo.PERPLEXITY_SCORE: 0.0
+        }
         
         # Loss and Score History in Train Set and Validation Set
         self.losses = []
@@ -124,6 +127,15 @@ class GPTTrainer:
         if os.path.exists(path):
             self.__load(path, location)
 
+    def freeze_pretrain(self):
+        self.model.decoder.requires_grad_(False)
+
+    def show_info_config(self, info: dict, name: str):
+        print(f"============== {name} Information ==============")
+        for key in info.keys():
+            print(f"\t{key}: {info[key]}")
+        print("\n")
+
     def build_dataloader(self, dataset: Dataset, batch_size: int):
         return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda batch: get_batch_with_padding(batch, self.pad_value))
     
@@ -137,10 +149,12 @@ class GPTTrainer:
         loss.backward()
         self.optimizer.step()
 
-        score = self.metric(outputs.cpu(), labels.cpu())
+        score = self.metric(outputs, labels)
 
         self.loss += loss.item()
-        self.score += score.item()
+        self.score[MetricInfo.BLEU_SCORE] += score[MetricInfo.BLEU_SCORE]
+        self.score[MetricInfo.PERPLEXITY_SCORE] += score[MetricInfo.PERPLEXITY_SCORE]
+
 
     def fit(self, train_dataset: Dataset, val_dataset: Dataset = None, epochs: int = 1, batch_size: int = 1, epoch_save: int = None, step_save: int = None, validation_config_path: str = None, tracking_config_path: str = None):
         validation_config = None
@@ -150,7 +164,7 @@ class GPTTrainer:
         tracking_config = None
         if tracking_config_path is not None:
             tracking_config = self.load_config(tracking_config_path)
-        print(tracking_config)
+            self.show_info_config(tracking_config, "Tracking")
         
         save_strategy = None
         if epoch_save is not None:
@@ -195,15 +209,20 @@ class GPTTrainer:
                     self.save_model(self.checkpoint)
 
             train_loss = self.loss/num_batches
-            train_score = self.score/num_batches
-
-            print(f"Epoch {self.epoch + 1}: Train Loss: {(train_loss):.4f} Train Score: {(train_score):.4f}")
+            bleu_score = self.score[MetricInfo.BLEU_SCORE]/num_batches
+            perplexity_score = self.score[MetricInfo.PERPLEXITY_SCORE]/num_batches
+            print("=========== Training Statistical ===========")
+            print(f"Epoch {self.epoch + 1}: \n\tTrain Loss: {(train_loss):.4f} \n\tTrain BLEU Score: {(bleu_score):.4f} \n\tTrain Perplexity Score: {(perplexity_score):.4f}")
             self.loss = 0.0
-            self.score = 0.0
+            self.score = {
+                MetricInfo.BLEU_SCORE: 0.0,
+                MetricInfo.PERPLEXITY_SCORE: 0.0
+            }
 
             if tracking_config is not None:
                 mlflow.log_metric(f"Train Loss", train_loss, self.epoch)
-                mlflow.log_metric(f"Train Score", train_score, self.epoch)
+                mlflow.log_metric(f"Train BLEU Score", bleu_score, self.epoch)
+                mlflow.log_metric(f"Train Perplexity Score", perplexity_score, self.epoch)
 
             if val_dataset is not None:
                 val_batch_size = batch_size
@@ -217,21 +236,21 @@ class GPTTrainer:
             if save_strategy is not None and save_strategy == "epoch" and epoch%num_save == num_save + 1:
                 self.save_model(self.checkpoint)
             
-            print(f"====================== Done Epoch {self.epoch + 1} ======================\n")
+            print(f"====================== Done Epoch {self.epoch + 1} ======================")
+            print("\n")
             self.epoch += 1
         
         print(f"====================== Done Training ======================")
+        print("\n")
         
         
         self.save_model(self.checkpoint)
         print(f"Model is saved at {self.checkpoint}")
 
         if tracking_config_path is not None:
+            mlflow.pytorch.log_model(self.model, artifact_path="model")
             mlflow.pytorch.log_state_dict(self.model.state_dict(), artifact_path="model_state_dict")
             mlflow.pytorch.log_state_dict(self.optimizer.state_dict(), artifact_path="optimizer_state_dict")
-            if tracking_config is not None and tracking_config['run_id'] is None:
-                tracking_config['run_id'] = mlflow.active_run().info.run_id()
-                self.save_config(tracking_config, tracking_config_path)
     
     def validate_step(self, inputs: torch.Tensor, labels: torch.Tensor):
         outputs = self.model(inputs)
@@ -260,7 +279,7 @@ class GPTTrainer:
     
     def evaluate(self, data: torch.Tensor, batch_size: int = 1):
         self.model.eval()
-        dataloader = self.build_dataset(data, batch_size=batch_size)
+        dataloader = self.build_dataloader(data, batch_size=batch_size)
         self.validate(dataloader)
 
 
@@ -304,6 +323,49 @@ class GPTLoss(nn.Module):
         loss = loss / batch_size
 
         return loss
+    
+class GPTMetric(nn.Module):
+    def __init__(self, n_gram: int = 4, smooth: bool = False, pad_value: int = 0) -> None:
+        super().__init__()
+        self.bleu_assessor = torchmetrics.BLEUScore(n_gram=n_gram, smooth=smooth)
+        self.perplexity_assessor = torchmetrics.Perplexity(ignore_index=pad_value)
+        self.pad_value = pad_value
+
+    def handle_padding(self, x: torch.Tensor):
+        last_non_zero_index = len(x) - 1
+        for i in range(len(x) - 1, -1, -1):
+            if x[i] != self.pad_value:
+                last_non_zero_index = i
+                break
+
+        x = x[:last_non_zero_index + 1]
+        
+        return x
+    
+    def create_sentence(self, x: torch.Tensor):
+        return " ".join(x.cpu().numpy().astype(str))
+
+    def forward(self, outputs: torch.Tensor, labels: torch.Tensor):
+        outputs = outputs.cpu()
+        labels = labels.cpu()
+
+        batch_size = labels.size(0)
+        _, predicted_tokens  = torch.max(outputs, dim=-1)
+        
+        bleu_score = 0.0
+
+        for batch in range(batch_size):
+            ref = self.create_sentence(self.handle_padding(labels[batch]))
+            hypo = self.create_sentence(self.handle_padding(predicted_tokens[batch]))
+
+            bleu_score += self.bleu_assessor([hypo], [[ref]])
+    
+        perplexity_score = self.perplexity_assessor(outputs, labels)
+
+        return {
+            MetricInfo.BLEU_SCORE: bleu_score.item()/batch_size,
+            MetricInfo.PERPLEXITY_SCORE: perplexity_score.item()
+        }
 
 def get_batch_with_padding(batch ,padding_value: int = 0):
     max_length = np.max([len(item) for item in batch])
@@ -334,3 +396,12 @@ class ModelInfo:
     METRIC = 'metric'
     VAL_LOSS = 'val_loss'
     VAL_METRIC = 'val_metric'
+
+
+class MetricInfo:
+    BLEU_SCORE = 'bleu_score'
+    PERPLEXITY_SCORE = 'perplexity_score'
+
+
+class TrackingInfo:
+    pass
