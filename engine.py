@@ -2,7 +2,7 @@ import tensorrt as trt
 import numpy as np
 from pycuda import driver as cuda, autoinit # Need to import autoinit to allocate cuda memory
 import os
-from preprocess import Tokenizer
+from preprocessing.tokenizer import Tokenizer
 import time
 import re
 
@@ -99,38 +99,8 @@ def cmd_chat(engine_path: str, tokenizer_path: str, max_ctx: int):
 
             # Post-Process
             words = tokenizer.decode(digits[0][message_length:])
-            response = ""
-            
-            upper_flag = False
-            upper_all_flag = False
-            for word in words:
-                if word in tokenizer.special_tokens:
-                    if word == "<upper>":
-                        upper_flag = True
-                    elif word == "<upper_all>":
-                        upper_all_flag = True
-                    elif word == "<new_line>":
-                        response += "\n"
-                        upper_flag = True
-                    elif word == "<circle_dot>":
-                        response += "| "
-                        upper_flag = True
-                    elif word == ".":
-                        upper_flag = True
-                    continue
-                else:
-                    if upper_flag:
-                        upper_flag = False
-                        response += str(word).capitalize()
-                    elif upper_all_flag:
-                        upper_all_flag = False
-                        response += re.sub(tokenizer.word_break_icon, " ", str(word)).upper()
-                    else:
-                        response += word
-
-            response = re.sub(tokenizer.word_break_icon, " ", response)
-            response = re.sub(f"\s{tokenizer.cleaner.puncs}\s", r'\1 ', response)
-            response = response[0].upper() + response[1:]
+            print(words)
+            response = "OK"
         except Exception as e:
             print(str(e))
             response = "BUG"

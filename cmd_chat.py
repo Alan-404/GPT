@@ -1,6 +1,6 @@
 import torch
 from preprocessing.tokenizer import Tokenizer
-from trainer import GPTTrainer
+from trainer import GPTTrainer, activation_functions_dict
 import re
 import numpy as np
 import onnxruntime as ort
@@ -119,12 +119,28 @@ def jit_response(tokenizer_path: str, checkpoint: str, device: str, max_ctx: int
             break
 
 
-def trainer_repsonse(tokenizer_path: str, checkpoint: str, device: str, max_ctx: int):
+def trainer_repsonse(
+        n:int,
+        d_model: int,
+        heads: int,
+        d_ff: int,
+        eps: float,
+        activation,
+        dropout_rate: float,
+        tokenizer_path: str, checkpoint: str, device: str, max_ctx: int
+    ):
     tokenizer = Tokenizer(tokenizer_path)
     
     load_start_time = time.time()
     trainer = GPTTrainer(
         token_size=len(tokenizer.dictionary),
+        n=n,
+        heads=heads,
+        d_ff=d_ff,
+        dropout_rate=dropout_rate,
+        eps=eps,
+        activation=activation,
+
         checkpoint=checkpoint,
         device=device
     )
@@ -155,6 +171,15 @@ if __name__ == '__main__':
 
     parser = ArgumentParser()
 
+    # Model Hyper-parameters
+    parser.add_argument("--n", type=int, default=12)
+    parser.add_argument("--d_model", type=int, default=768)
+    parser.add_argument("--heads", type=int, default=12)
+    parser.add_argument("--d_ff", type=int, default=3072)
+    parser.add_argument("--dropout_rate", type=float, default=0.1)
+    parser.add_argument("--eps", type=float, default=0.02)
+    parser.add_argument("--activation", type=str, default='gelu')
+
     parser.add_argument("--tokenizer_path", type=str)
     parser.add_argument("--checkpoint", type=str)
     parser.add_argument("--device",type=str, default='cpu')
@@ -166,6 +191,13 @@ if __name__ == '__main__':
     if args.model_type == 'trainer':
         print("Trainer Mode")
         trainer_repsonse(
+            n=args.n,
+            d_model=args.d_model,
+            heads=args.heads,
+            d_ff=args.d_ff,
+            eps=args.eps,
+            activation=activation_functions_dict[args.activation],
+            dropout_rate=args.dropout_rate,
             tokenizer_path=args.tokenizer_path,
             checkpoint=args.checkpoint,
             device=args.device,

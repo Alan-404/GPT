@@ -9,7 +9,7 @@ def train(tokenizer_path: str, data_path: str, token_path: str, saved_tokenizer:
 
     df = pd.read_csv(data_path, sep="\t")
     print(df)
-    data = df['input'] + df['output']
+    data = df['input'].to_list() + df['output'].to_list()
 
     token_item = json.load(open(token_path, encoding=ENCODING_FORMAT))
 

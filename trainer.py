@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import torchmetrics
+from torcheval import metrics
+import torchsummary
 from typing import Callable
 from gpt import GPT
 import os
@@ -15,14 +16,12 @@ import numpy as np
 import yaml
 from yaml.loader import SafeLoader
 
-
 class GPTTrainer:
     def __init__(self,
                  token_size: int,
                  n: int = 12,
                  d_model: int = 768,
                  heads: int = 12,
-                 d_ff: int = 3072,
                  activation: Callable[[torch.Tensor], torch.Tensor] = F.gelu,
                  dropout_rate: float = 0.1,
                  eps: float = 0.02,
@@ -36,7 +35,6 @@ class GPTTrainer:
             n=n,
             d_model=d_model,
             heads=heads,
-            d_ff=d_ff,
             activation=activation,
             dropout_rate=dropout_rate,
             eps=eps
@@ -59,14 +57,10 @@ class GPTTrainer:
 
         # Loss and Score Statistical
         self.loss = 0.0
-        self.score = {
-            MetricInfo.BLEU_SCORE: 0.0,
-            MetricInfo.PERPLEXITY_SCORE: 0.0
-        }
+        self.score = 0.0
         
         # Loss and Score History in Train Set and Validation Set
         self.losses = []
-        self.scores = []
 
         self.val_losses = []
         self.val_scores = []
@@ -82,12 +76,12 @@ class GPTTrainer:
             ModelInfo.MODEL_STATE_DICT: self.model.state_dict(),
             ModelInfo.OPTIMIZER_STATE_DICT: self.optimizer.state_dict(),
             ModelInfo.EPOCH: self.epoch,
-            ModelInfo.LOSS: self.losses,
-            ModelInfo.METRIC: self.scores,
-            ModelInfo.VAL_LOSS: self.val_losses,
-            ModelInfo.VAL_METRIC: self.val_scores
+            ModelInfo.LOSS: self.losses
         }, path)
     
+    def summary(self):
+        torchsummary.summary(self.model)
+
     def save_model(self, path: str):
         try:
             self.__save(path)
@@ -101,9 +95,6 @@ class GPTTrainer:
         self.optimizer.load_state_dict(checkpoint[ModelInfo.OPTIMIZER_STATE_DICT])
         self.epoch = checkpoint[ModelInfo.EPOCH]
         self.losses = checkpoint[ModelInfo.LOSS]
-        self.scores = checkpoint[ModelInfo.METRIC]
-        self.val_losses = checkpoint[ModelInfo.VAL_LOSS]
-        self.val_scores = checkpoint[ModelInfo.VAL_METRIC]
         checkpoint = None
 
     def __load_config(self, path: str):
@@ -149,14 +140,25 @@ class GPTTrainer:
         loss.backward()
         self.optimizer.step()
 
-        score = self.metric(outputs, labels)
-
         self.loss += loss.item()
-        self.score[MetricInfo.BLEU_SCORE] += score[MetricInfo.BLEU_SCORE]
-        self.score[MetricInfo.PERPLEXITY_SCORE] += score[MetricInfo.PERPLEXITY_SCORE]
 
+    def __setup_tracking(self, tracking_config: dict):
+        mlflow.set_tracking_uri(tracking_config['tracking_uri'])
+        if tracking_config['experiment_name'] is None:
+            tracking_config['experiment_name'] = 'GPT'
+        mlflow.set_experiment(tracking_config['experiment_name'])
 
-    def fit(self, train_dataset: Dataset, val_dataset: Dataset = None, epochs: int = 1, batch_size: int = 1, epoch_save: int = None, step_save: int = None, validation_config_path: str = None, tracking_config_path: str = None):
+        if tracking_config['run_id'] is not None:
+            mlflow.start_run(run_id=tracking_config['run_id'])
+        else:
+            if tracking_config['run_name'] is None:
+                tracking_config['run_name'] = "Version 1"
+            mlflow.start_run(run_name=tracking_config['run_name'])
+
+    def fit(self, train_dataset: Dataset, val_dataset: Dataset = None, epochs: int = 1, batch_size: int = 1, validation_config_path: str = None, tracking_config_path: str = None):
+        self.summary()
+        print("Start Training\n")
+
         validation_config = None
         if validation_config_path is not None:
             validation_config = self.load_config(validation_config_path)
@@ -166,36 +168,11 @@ class GPTTrainer:
             tracking_config = self.load_config(tracking_config_path)
             self.show_info_config(tracking_config, "Tracking")
         
-        save_strategy = None
-        if epoch_save is not None:
-            save_strategy = "epoch"
-        elif step_save is not None:
-            save_strategy = "step"
-        
         train_dataloader = self.build_dataloader(train_dataset, batch_size)
         num_batches = len(train_dataloader)
-        
-        num_save = 0
-        if save_strategy is not None:
-            if save_strategy == "step":
-                if step_save > num_batches:
-                    num_save = num_batches
-            elif save_strategy == "epoch":
-                if epoch_save > epochs:
-                    num_save = epochs
-
+    
         if tracking_config is not None:
-            mlflow.set_tracking_uri(tracking_config['tracking_uri'])
-            if tracking_config['experiment_name'] is None:
-                tracking_config['experiment_name'] = 'GPT'
-            mlflow.set_experiment(tracking_config['experiment_name'])
-
-            if tracking_config['run_id'] is not None:
-                mlflow.start_run(run_id=tracking_config['run_id'])
-            else:
-                if tracking_config['run_name'] is None:
-                    tracking_config['run_name'] = "Version 1"
-                mlflow.start_run(run_name=tracking_config['run_name'])
+            self.__setup_tracking(tracking_config)
 
         self.model.train()
         for epoch in range(epochs):
@@ -205,36 +182,29 @@ class GPTTrainer:
                 labels = data[:, 1:].to(self.device)
 
                 self.train_step(inputs, labels)
-                if save_strategy is not None and save_strategy == "step" and index%num_save == num_save+1:
-                    self.save_model(self.checkpoint)
 
             train_loss = self.loss/num_batches
-            bleu_score = self.score[MetricInfo.BLEU_SCORE]/num_batches
-            perplexity_score = self.score[MetricInfo.PERPLEXITY_SCORE]/num_batches
+            
             print("=========== Training Statistical ===========")
-            print(f"Epoch {self.epoch + 1}: \n\tTrain Loss: {(train_loss):.4f} \n\tTrain BLEU Score: {(bleu_score):.4f} \n\tTrain Perplexity Score: {(perplexity_score):.4f}")
-            self.loss = 0.0
-            self.score = {
-                MetricInfo.BLEU_SCORE: 0.0,
-                MetricInfo.PERPLEXITY_SCORE: 0.0
-            }
+            print(f"Epoch {self.epoch + 1}: \n\tTrain Loss: {(train_loss):.4f}")
+            
+            self.losses.append(train_loss)
 
             if tracking_config is not None:
                 mlflow.log_metric(f"Train Loss", train_loss, self.epoch)
-                mlflow.log_metric(f"Train BLEU Score", bleu_score, self.epoch)
-                mlflow.log_metric(f"Train Perplexity Score", perplexity_score, self.epoch)
+            
+            self.loss = 0.0
 
             if val_dataset is not None:
                 val_batch_size = batch_size
                 if validation_config is not None and validation_config['batch_size'] is not None:
                     val_batch_size = validation_config['batch_size']
-                val_loss, val_score = self.validate(val_dataset, batch_size=val_batch_size)
+                
+                val_info = self.validate(val_dataset, batch_size=val_batch_size)
+                
                 if tracking_config is not None:
-                    mlflow.log_metric(f"Validate Loss", val_loss, self.epoch)
-                    mlflow.log_metric(f"Validate Score", val_score, self.epoch)
-            
-            if save_strategy is not None and save_strategy == "epoch" and epoch%num_save == num_save + 1:
-                self.save_model(self.checkpoint)
+                    mlflow.log_metric(f"Val Loss", val_info[ModelInfo.LOSS], self.epoch)
+                    mlflow.log_metric(f"Val Perplexity Score", val_info[ModelInfo.PERPLEXITY_SCORE], self.epoch)
             
             print(f"====================== Done Epoch {self.epoch + 1} ======================")
             print("\n")
@@ -251,30 +221,32 @@ class GPTTrainer:
             mlflow.pytorch.log_model(self.model, artifact_path="model")
             mlflow.pytorch.log_state_dict(self.model.state_dict(), artifact_path="model_state_dict")
             mlflow.pytorch.log_state_dict(self.optimizer.state_dict(), artifact_path="optimizer_state_dict")
-    
-    def validate_step(self, inputs: torch.Tensor, labels: torch.Tensor):
-        outputs = self.model(inputs)
 
-        loss = self.cost(outputs, labels)
-        score = self.metric(outputs, labels)
-
-        return loss, score
     
     def validate(self, val_dataset: Dataset, batch_size: int):
         val_dataloader = self.build_dataloader(val_dataset, batch_size=batch_size)
         loss = 0.0
-        score = 0.0
+        perplexity_score = 0.0
         num_batches = len(val_dataloader)
         print(f"================ Validate at Epoch {self.epoch+1} ================")
-        for index, data in enumerate(tqdm(val_dataloader)):
+        for _, data in enumerate(tqdm(val_dataloader)):
             inputs = data[:, :-1].to(self.device)
             labels = data[:, 1:].to(self.device)
-            batch_loss, batch_score = self.validate_step(inputs, labels)
+            
+            outputs = self.model(inputs)
 
-            loss += batch_loss
-            score += batch_score
+            loss += self.cost(outputs, labels)
+            perplexity_score += self.metric(outputs, labels).item()
+
+            
+
+
+            
         print(f"================ Done Validate at Epoch {self.epoch+1} ================")
-        return loss/num_batches, score/num_batches
+        return {
+            ModelInfo.LOSS: loss/num_batches,
+            ModelInfo.PERPLEXITY_SCORE: perplexity_score/num_batches
+        }
     
     
     def evaluate(self, data: torch.Tensor, batch_size: int = 1):
@@ -307,7 +279,9 @@ class GPTDataset(Dataset):
         return len(self.prompts)
     
     def __getitem__(self, index: int):
-        digits = self.tokenizer.text2sequence(self.prompts.loc[index]['input'], self.prompts.loc[index]['output'])
+        text_input = self.prompts.loc[index]['input']
+        text_output = self.prompts.loc[index]['output']
+        digits = self.tokenizer.text2sequence(text_input, text_output)
         return digits
 
 class GPTLoss(nn.Module):
@@ -324,48 +298,18 @@ class GPTLoss(nn.Module):
 
         return loss
     
-class GPTMetric(nn.Module):
-    def __init__(self, n_gram: int = 4, smooth: bool = False, pad_value: int = 0) -> None:
+class GPTMetric:
+    def __init__(self, pad_value: int = 0) -> None:
         super().__init__()
-        self.bleu_assessor = torchmetrics.BLEUScore(n_gram=n_gram, smooth=smooth)
-        self.perplexity_assessor = torchmetrics.Perplexity(ignore_index=pad_value)
-        self.pad_value = pad_value
+        self.perplexity_assessor = metrics.Perplexity(ignore_index=pad_value)
 
-    def handle_padding(self, x: torch.Tensor):
-        last_non_zero_index = len(x) - 1
-        for i in range(len(x) - 1, -1, -1):
-            if x[i] != self.pad_value:
-                last_non_zero_index = i
-                break
-
-        x = x[:last_non_zero_index + 1]
-        
-        return x
-    
-    def create_sentence(self, x: torch.Tensor):
-        return " ".join(x.cpu().numpy().astype(str))
-
-    def forward(self, outputs: torch.Tensor, labels: torch.Tensor):
+    def __call__(self, outputs: torch.Tensor, labels: torch.Tensor):
         outputs = outputs.cpu()
         labels = labels.cpu()
-
-        batch_size = labels.size(0)
-        _, predicted_tokens  = torch.max(outputs, dim=-1)
-        
-        bleu_score = 0.0
-
-        for batch in range(batch_size):
-            ref = self.create_sentence(self.handle_padding(labels[batch]))
-            hypo = self.create_sentence(self.handle_padding(predicted_tokens[batch]))
-
-            bleu_score += self.bleu_assessor([hypo], [[ref]])
     
         perplexity_score = self.perplexity_assessor(outputs, labels)
 
-        return {
-            MetricInfo.BLEU_SCORE: bleu_score.item()/batch_size,
-            MetricInfo.PERPLEXITY_SCORE: perplexity_score.item()
-        }
+        return perplexity_score.item()
 
 def get_batch_with_padding(batch ,padding_value: int = 0):
     max_length = np.max([len(item) for item in batch])
@@ -395,12 +339,8 @@ class ModelInfo:
     LOSS = 'loss'
     METRIC = 'metric'
     VAL_LOSS = 'val_loss'
-    VAL_METRIC = 'val_metric'
-
-
-class MetricInfo:
-    BLEU_SCORE = 'bleu_score'
     PERPLEXITY_SCORE = 'perplexity_score'
+
 
 
 class TrackingInfo:

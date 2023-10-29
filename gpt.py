@@ -5,20 +5,23 @@ from typing import Union, Callable
 import numpy as np
 
 class GPT(nn.Module):
-    def __init__(self, token_size: int, n: int, d_model: int, heads: int, d_ff: int, activation: Callable[[torch.Tensor], torch.Tensor], dropout_rate: float, eps: float) -> None:
+    def __init__(self, token_size: int, n: int, d_model: int, heads: int, activation: Callable[[torch.Tensor], torch.Tensor], dropout_rate: float, eps: float) -> None:
         super().__init__()
+        self.mask_generator = MaskGenerator()
         self.embed = TextAndEmbed(token_size, d_model, dropout_rate)
-        self.decoder = Decoder(n, d_model, heads, d_ff, activation, dropout_rate, eps)
+        self.decoder = Decoder(n, d_model, heads, 4 * d_model, activation, dropout_rate, eps)
         self.norm_layer = nn.LayerNorm(normalized_shape=d_model, eps=eps)
+        self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.classifier = nn.Linear(in_features=d_model, out_features=token_size)
 
     def forward(self, x: torch.Tensor):
         mask = None
-        if self.training:
-            mask = generate_look_ahead_mask(x)
+        if x.size(0) != 1:
+            mask = self.mask_generator(x)
         x = self.embed(x)
         x = self.decoder(x, mask)
         x = self.norm_layer(x)
+        x = self.dropout_layer(x)
         x = self.classifier(x)
         return x
 
@@ -103,6 +106,7 @@ class MultiHeadAttention(nn.Module):
 
         attention_context = self.linear_output(attention_context)
         attention_context = F.dropout(attention_context, p=self.dropout_rate, training=self.training)
+        
         return attention_context
 
 class PositonWiseFeedForwardNetworks(nn.Module):
@@ -172,18 +176,23 @@ class PositionalEncoding(nn.Module):
         pos_angles = pos_angles.unsqueeze(0)
         x += pos_angles.to(x.device)
         return x
+
+
+class MaskGenerator(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
     
-def generate_padding_mask(tensor: torch.Tensor)-> torch.Tensor:
-    return torch.Tensor(tensor == 0).type(torch.int64)[:, np.newaxis, np.newaxis, :]
+    def generate_padding_mask(self, tensor: torch.Tensor)-> torch.Tensor:
+        return torch.Tensor(tensor == 0).type(torch.int64)[:, np.newaxis, np.newaxis, :]
 
-def __generate_look_ahead_mask(length: int) -> torch.Tensor:
-    return torch.triu(torch.ones((length, length)), diagonal=1)
+    def __generate_look_ahead_mask(self, length: int) -> torch.Tensor:
+        return torch.triu(torch.ones((length, length)), diagonal=1)
 
-def generate_look_ahead_mask(tensor: torch.Tensor) -> torch.Tensor:
-    padding_mask = generate_padding_mask(tensor)
+    def forward(self, tensor: torch.Tensor) -> torch.Tensor:
+        padding_mask = self.generate_padding_mask(tensor)
 
-    look_ahead_mask = __generate_look_ahead_mask(tensor.size(1)).to(tensor.device)
+        look_ahead_mask = self.__generate_look_ahead_mask(tensor.size(1)).to(tensor.device)
 
-    look_ahead_mask = torch.maximum(look_ahead_mask, padding_mask)
+        look_ahead_mask = torch.maximum(look_ahead_mask, padding_mask)
 
-    return look_ahead_mask
+        return look_ahead_mask

@@ -1,0 +1,184 @@
+noun:
+- khoa học dữ liệu
+- khoa học máy tính
+- phân tích dữ liệu
+- sư phạm kỹ thuật
+- tập đoàn
+- công ty
+- xử lý ngôn ngữ tự nhiên
+- dữ liệu
+- khoa học
+- chatbot
+- máy tính
+- hệ điều hành
+- đại học
+- trường
+- hệ thống
+- chủ đề
+- thuật toán
+- công nghệ
+- thông tin
+- mạng
+- ngôn ngữ
+- học máy
+- học sâu
+- cpu
+- gpu
+- trí tuệ
+- thị giác
+- AI
+- A.I.
+- A.I
+- mô hình
+- việt nam
+- máy
+- robot
+- câu
+- điều
+- ngôn ngữ
+- cảm xúc
+- tuổi
+- ngày
+
+pronoun:
+- tôi
+- tui
+- tao
+- bạn
+- mày
+- anh
+- chị
+- cô
+- cậu
+- bao nhiêu
+- ở đâu
+- ai
+- thế nào
+
+verb:
+- cho
+- biết
+- có
+- phân tích
+- về
+- cảm ơn
+- tạm biệt
+- có thể
+- có
+- hãy
+- học
+- xử lý
+- hỏi
+- là
+- uống
+- xin
+- chào
+- là
+- hãy cho
+
+adjective:
+- hiện đại
+- tuyệt vời
+- xuất sắc
+- đẹp
+- tuyệt
+- tốt
+- vui
+- thật
+- sâu
+- nhân tạo
+- tự nhiên
+
+preposition:
+- để
+- về
+- với
+
+conjuction:
+- nhưng mà
+- tuy nhiên
+- bởi vì
+- tại vì
+- vì
+- mặc dù
+- không những
+- mà còn
+
+interjection:
+- ối
+- ôi
+- nha
+- nhá
+- nhé
+- nhe
+- ồ
+- ô hay
+- nào
+- ê
+- này
+- á
+- nè
+- à
+- vâng
+- vâng ạ
+- dạ
+- gì
+- vậy
+
+quantity:
+- những
+- mỗi
+- tất cả
+- toàn bộ
+- cả
+- vài
+- một vài
+- ít
+- một ít
+- một tí
+
+adverb:
+- đang
+- đã
+- sẽ
+- rất
+- quá
+- lắm
+- cũng
+- từng
+- không
+- chưa
+- chẳng
+- được
+- được không
+
+number:
+- thứ nhất
+- một
+- hai
+- ba
+- bốn
+- năm
+- sáu
+- bảy
+- tám
+- chín
+- mười
+
+point:
+- này
+- kia
+- đó
+- cái
+- ấy
+- nọ
+
+character:
+- '.'
+- ','
+- '?'
+- '!'
+- '@'
+
+exception:
+- <unk>

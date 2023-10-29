@@ -62,7 +62,12 @@ def hello(dto: ChatMessage):
     request_text_length = len(dto.message.split(" "))
 
     # Pre-Process Textual Data
-    digits = tokenizer.text_to_sequences([dto.message], start_token=True, sep_token=True)
+    digits = tokenizer.text2digit(dto.message, start_token=True, sep_token=True)
+
+    if digits is None:
+        return {'response': "Tôi không biết về điều này, xin lỗi bạn nhé."}
+    digits = np.expand_dims(digits, axis=0)
+    
     request_token_length = digits.shape[1]
     response_start_index = digits.shape[-1]
 
@@ -78,13 +83,13 @@ def hello(dto: ChatMessage):
             break
 
         digits = np.concatenate((digits, np.expand_dims(pred_token, axis=0)), axis=-1)
-
+    print(digits)
     digits = digits[0][response_start_index:]
     response_token_length = len(digits)
     
     # Post-Process Data
-    response = tokenizer.decode_to_sequence(digits, hot_words=load_json_file("./config/hot_word.json"))
-    response_text_length = len(response.split(" "))
+    response = tokenizer.decode(digits)
+    # response_text_length = len(response.split(" "))
     end_time = time.time()
 
     # Response
@@ -92,7 +97,7 @@ def hello(dto: ChatMessage):
             "time_out": end_time-start_time,
             "request_text_length": request_text_length,
             "request_token_length": request_token_length,
-            'response_text_length': response_text_length,
+            # 'response_text_length': response_text_length,
             "response_token_length": response_token_length}
 
 

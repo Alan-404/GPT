@@ -1,4 +1,4 @@
 tracking_uri: /home/alan/Src/Trackings/mlruns
 experiment_name: GPT
-run_name: Version 1
-run_id:
+run_name: Version 2 - n_10
+run_id: 

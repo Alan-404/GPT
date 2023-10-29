@@ -8,7 +8,6 @@ class Tokenizer:
     def __init__(self, pretrained: str = None, special_tokens: list = [], info_tokens: dict = {}) -> None:
         init_tokens = ["<pad>", "<start>", "<end>", "<oov>", "<sep>"]
         self.cleaner = Cleaner()
-        self.replacer = Replacer()
         self.vocab_dict = dict()
         self.dictionary = []
         self.info = info_tokens
@@ -25,11 +24,6 @@ class Tokenizer:
             self.special_tokens = init_tokens + special_tokens
             for key in info_tokens.keys():
                 self.special_tokens.append(key)
-        
-        if len(self.dictionary) != 0:
-            print(f"Current Dictionary Size: {len(self.dictionary)}")
-        else:
-            print(f"Haven't Trained Before")
 
     def get_special_token(self, name: str):
         name = f"<{name}>"
@@ -83,7 +77,6 @@ class Tokenizer:
         dictionary = []
         for seq in data:
             seq = self.cleaner.clean(seq)
-            seq = self.replacer.replace(seq)
             words = str(seq).split(" ")
             for word in words:
                 if word not in dictionary:
@@ -122,14 +115,11 @@ class Tokenizer:
         return pair
 
     def fit(self, data: list, max_iterations: int = 10, sigma: float = 2.0):
-        print("========== Train Tokenizer ==========")
         if self.original_size == 0 and len(self.dictionary) == 0:
             self.vocab_dict, self.original_size = self.init_vocab_dict(data)
             self.dictionary = self.create_dictionary(self.vocab_dict)
         print(f"Original Dictionary Size: {self.original_size}")
-        print(f"Current Dictionary Size: {len(self.dictionary)}")
-        print("========== Start Training Tokenizer ============")
-        print("\n")
+        print("========== Training Tokenizer ============")
         for _ in tqdm(range(max_iterations)):
             pairs = self.create_pair(self.vocab_dict)
             max_item = max(pairs, key=lambda k: pairs[k])
@@ -217,7 +207,6 @@ class Tokenizer:
         maxlen = 0
         for seq in data:
             seq = self.cleaner.clean(seq)
-            seq = self.replacer.replace(seq)
             words = seq.split(" ")
             temp = []
             if start_token:
@@ -246,7 +235,6 @@ class Tokenizer:
     def text2digit(self, sequence: str, start_token: bool = False, sep_token: bool = False, end_token: bool = False):
         digits = []
         sequence = self.cleaner.clean(sequence)
-        sequence = self.replacer.replace(sequence)
 
         words = sequence.split(" ")
         if start_token:
@@ -276,17 +264,8 @@ class Tokenizer:
                 text.append(" ")
             else:
                 text.append(self.dictionary[token])
-        return text
-    
-    def decode_to_sequence(self, tokens: np.ndarray, hot_words: dict = {}):
-        word_tokens = self.decode(tokens)
-        sequence = re.sub("</w>", " ", "".join(word_tokens))
-        if len(hot_words):
-            for hot_word in hot_words.keys():
-                sequence = re.sub(hot_word, hot_words[hot_word], sequence)
-        sequence = re.sub(f"\s{self.cleaner.puncs}\s", r"\1 ", sequence)
-        sequence = sequence[0].upper() + sequence[1:]
-        return sequence
+        
+        return "".join(text).replace("</w>", " ")
     
     def get_data(self, path: str) -> np.ndarray:
         with open(path, 'rb') as file:
@@ -302,29 +281,6 @@ class Cleaner:
         seq = seq.lower()
         return seq
 
-class Replacer:
-    def __init__(self) -> None:
-        self.replace_patterns = [
-            (r"won\'t", 'will not'),
-            (r"can't", 'cannot'),
-            (r"'ll", " will"),
-            (r"n\'t", "not"),
-            (r"don\'t", "do not"),
-            (r"doesn\'t", "does not"),
-            (r"'ve", " have"),
-            (r"i\'m", 'i am'),
-            (r"'re", " are"),
-            (r"wasn't", "was not"),
-            (r"weren't", "were not"),
-            (r"\'d", " would"),
-            (r"\'s", " 's")
-        ]
-
-    def replace(self, sequence: list) -> list:
-        for (pattern, repl) in self.replace_patterns:
-            sequence = re.sub(pattern, repl, sequence)
-
-        return sequence
 
 def load_data(path):
     if os.path.exists(path):
@@ -345,9 +301,3 @@ class TokenizerInfo:
     INFO_TOKENS = 'info_tokens'
     ORIGINAL_SIZE = 'original_size'
     EPOCH = 'epoch'
-
-if __name__ == '__main__':
-    tokenizer = Tokenizer('./tokenizer/v1/dictionary.pkl')
-
-    with open('./tokenizer.pkl', 'wb') as file:
-        pickle.dump(pickle.dumps(tokenizer, protocol=pickle.HIGHEST_PROTOCOL), file, protocol=pickle.HIGHEST_PROTOCOL)
